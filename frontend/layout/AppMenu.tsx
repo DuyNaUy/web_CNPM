@@ -20,7 +20,6 @@ const AppMenu = () => {
                 { label: 'Quản Lý Danh Mục', icon: 'pi pi-fw pi-tags', to: '/admin/categories' },
                 { label: 'Quản Lý Sản Phẩm', icon: 'pi pi-fw pi-shopping-bag', to: '/admin/products' },
                 { label: 'Quản Lý Đơn Hàng', icon: 'pi pi-fw pi-shopping-cart', to: '/admin/orders' },
-                { label: 'Quản Lý Đánh Giá', icon: 'pi pi-fw pi-star', to: '/admin/reviews' },
                 { label: 'Thống Kê Báo Cáo', icon: 'pi pi-fw pi-chart-line', to: '/admin/reports' }
             ]
         }
@@ -34,7 +33,6 @@ const AppMenu = () => {
                 { label: 'Quản Lý Danh Mục', icon: 'pi pi-fw pi-tags', to: '/admin/categories' },
                 { label: 'Quản Lý Sản Phẩm', icon: 'pi pi-fw pi-shopping-bag', to: '/admin/products' },
                 { label: 'Quản Lý Đơn Hàng', icon: 'pi pi-fw pi-shopping-cart', to: '/admin/orders' },
-                { label: 'Quản Lý Đánh Giá', icon: 'pi pi-fw pi-star', to: '/admin/reviews' },
                 { label: 'Thống Kê Báo Cáo', icon: 'pi pi-fw pi-chart-line', to: '/admin/reports' }
             ]
         }
