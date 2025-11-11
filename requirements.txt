@@ -1,0 +1,20 @@
+# Core framework
+Django>=5.0,<6.0
+
+# REST API
+djangorestframework>=3.15.0
+
+# CORS support (cho phép Next.js truy cập)
+django-cors-headers>=4.3.1
+
+# JWT Authentication
+djangorestframework-simplejwt>=5.3.0
+
+# Image handling
+Pillow>=10.0.0
+
+# MySQL database driver
+mysqlclient>=2.2.0
+
+# Filter support
+django-filter>=23.5
