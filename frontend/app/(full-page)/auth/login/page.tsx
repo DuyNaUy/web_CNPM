@@ -111,8 +111,8 @@ const LoginPage = () => {
                     <div className="w-full surface-card py-8 px-5 sm:px-8" style={{ borderRadius: '53px' }}>
                         <div className="text-center mb-5">
                             <div className="text-900 text-4xl font-bold mb-3">
-                                <i className="pi pi-shopping-cart mr-2" style={{ fontSize: '2.5rem', color: 'var(--primary-color)' }}></i>
-                                Cửa Hàng Thực Phẩm
+                                <i className="pi pi-heart mr-2" style={{ fontSize: '2.5rem', color: 'var(--primary-color)' }}></i>
+                                Teddy Shop 🧸
                             </div>
                             <div className="text-900 text-3xl font-medium mb-2">Đăng Nhập</div>
                             <span className="text-600 font-medium">Chào mừng bạn quay trở lại!</span>

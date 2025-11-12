@@ -263,6 +263,12 @@ export const categoryAPI = {
         });
     },
 
+    deleteCategory: async (id: number) => {
+        return await apiRequest(`/categories/${id}/delete_category/`, {
+            method: 'POST'
+        });
+    },
+
     toggleStatus: async (id: number) => {
         return await apiRequest(`/categories/${id}/toggle_status/`, {
             method: 'POST'
@@ -386,6 +392,62 @@ export const productAPI = {
         return await apiRequest(`/products/${id}/toggle_status/`, {
             method: 'POST'
         });
+    }
+};
+
+// Order API
+export const orderAPI = {
+    createOrder: async (orderData: {
+        full_name: string;
+        phone: string;
+        email: string;
+        address: string;
+        city: string;
+        district: string;
+        note?: string;
+        payment_method: string;
+        items: Array<{
+            id: number;
+            name: string;
+            price: number;
+            quantity: number;
+            unit: string;
+            image?: string;
+        }>;
+    }) => {
+        // Transform items to match backend format
+        const items = orderData.items.map(item => ({
+            id: item.id.toString(),
+            quantity: item.quantity.toString(),
+            unit: item.unit
+        }));
+
+        return await apiRequest('/orders/create_order/', {
+            method: 'POST',
+            body: JSON.stringify({
+                full_name: orderData.full_name,
+                phone: orderData.phone,
+                email: orderData.email,
+                address: orderData.address,
+                city: orderData.city,
+                district: orderData.district,
+                note: orderData.note || '',
+                payment_method: orderData.payment_method,
+                items
+            })
+        });
+    },
+
+    getMyOrders: async () => {
+        return await apiRequest('/orders/my_orders/');
+    },
+
+    getAllOrders: async () => {
+        return await apiRequest('/orders/all_orders/');
+    },
+
+    getStats: async () => {
+        return await apiRequest('/orders/stats/');
     }
 };
 

@@ -6,8 +6,9 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { RadioButton } from 'primereact/radiobutton';
 import { Toast } from 'primereact/toast';
 import { Divider } from 'primereact/divider';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { orderAPI, getStoredUser } from '@/services/api';
 
 interface CartItem {
     id: number;
@@ -15,35 +16,14 @@ interface CartItem {
     price: number;
     quantity: number;
     image: string;
+    unit: string;
 }
 
 const CheckoutPage = () => {
     const router = useRouter();
     const toast = useRef<Toast>(null);
-
-    const [cartItems] = useState<CartItem[]>([
-        {
-            id: 1,
-            name: 'Cải Thảo Hữu Cơ',
-            price: 25000,
-            quantity: 2,
-            image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=300'
-        },
-        {
-            id: 2,
-            name: 'Trứng Gà Organic',
-            price: 65000,
-            quantity: 1,
-            image: 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=300'
-        },
-        {
-            id: 3,
-            name: 'Gạo ST25',
-            price: 120000,
-            quantity: 3,
-            image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300'
-        }
-    ]);
+    const [cartItems, setCartItems] = useState<CartItem[]>([]);
+    const [isBuyNow, setIsBuyNow] = useState(false);
 
     const [formData, setFormData] = useState({
         fullName: 'Nguyễn Văn A',
@@ -56,6 +36,42 @@ const CheckoutPage = () => {
     });
 
     const [paymentMethod, setPaymentMethod] = useState<string>('cod');
+
+    // Load cart items on mount
+    useEffect(() => {
+        const buyNowItem = sessionStorage.getItem('buyNowItem');
+        if (buyNowItem) {
+            try {
+                const item = JSON.parse(buyNowItem);
+                setCartItems([item]);
+                setIsBuyNow(true);
+                // Clear after loading
+                sessionStorage.removeItem('buyNowItem');
+            } catch (error) {
+                console.error('Error parsing buyNowItem:', error);
+            }
+        } else {
+            // Default cart items for normal checkout
+            setCartItems([
+                {
+                    id: 1,
+                    name: 'Gấu Bông Màu Hồng Nhỏ',
+                    price: 89000,
+                    quantity: 1,
+                    image: '/demo/images/product/placeholder.png',
+                    unit: '30cm'
+                },
+                {
+                    id: 2,
+                    name: 'Gấu Bông Màu Nâu Vừa',
+                    price: 149000,
+                    quantity: 1,
+                    image: '/demo/images/product/placeholder.png',
+                    unit: '60cm'
+                }
+            ]);
+        }
+    }, []);
 
     const calculateSubtotal = () => {
         return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -70,7 +86,7 @@ const CheckoutPage = () => {
         return calculateSubtotal() + calculateShipping();
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!formData.fullName || !formData.phone || !formData.address) {
             toast.current?.show({
                 severity: 'warn',
@@ -81,16 +97,59 @@ const CheckoutPage = () => {
             return;
         }
 
-        toast.current?.show({
-            severity: 'success',
-            summary: 'Đặt hàng thành công',
-            detail: 'Cảm ơn bạn đã đặt hàng. Chúng tôi sẽ liên hệ với bạn sớm!',
-            life: 3000
-        });
+        if (cartItems.length === 0) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Lỗi',
+                detail: 'Giỏ hàng không có sản phẩm',
+                life: 3000
+            });
+            return;
+        }
 
-        setTimeout(() => {
-            router.push('/customer/orders');
-        }, 2000);
+        try {
+            const user = getStoredUser();
+            const orderData = {
+                full_name: formData.fullName,
+                phone: formData.phone,
+                email: formData.email || user?.email || '',
+                address: formData.address,
+                city: formData.city,
+                district: formData.district,
+                note: formData.note,
+                payment_method: paymentMethod,
+                items: cartItems
+            };
+
+            const response = await orderAPI.createOrder(orderData);
+
+            if (response && response.id) {
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Đặt hàng thành công',
+                    detail: `Mã đơn hàng: ${response.order_code}`,
+                    life: 3000
+                });
+
+                setTimeout(() => {
+                    router.push('/customer/orders');
+                }, 2000);
+            } else {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Lỗi',
+                    detail: response?.error || 'Không thể tạo đơn hàng',
+                    life: 3000
+                });
+            }
+        } catch (error: any) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Lỗi',
+                detail: error.message || 'Có lỗi xảy ra khi đặt hàng',
+                life: 3000
+            });
+        }
     };
 
     return (
@@ -181,7 +240,7 @@ const CheckoutPage = () => {
                             <img src={item.image} alt={item.name} className="w-4rem h-4rem border-round mr-3" style={{ objectFit: 'cover' }} />
                             <div className="flex-1">
                                 <div className="text-900 mb-1">{item.name}</div>
-                                <div className="text-600 text-sm">Số lượng: {item.quantity}</div>
+                                <div className="text-600 text-sm">Số lượng: {item.quantity} {item.unit ? `(${item.unit})` : ''}</div>
                             </div>
                             <div className="text-900 font-bold">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.price * item.quantity)}</div>
                         </div>

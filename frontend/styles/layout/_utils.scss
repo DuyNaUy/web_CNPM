@@ -6,12 +6,22 @@
 }
 
 .card {
-    background: var(--surface-card);
-    border: 1px solid var(--surface-border);
+    background: linear-gradient(135deg, #ffffff 0%, #fffbfd 50%, #fff9fb 100%);
+    border: 1px solid #ffddeb;
     padding: 2rem;
     margin-bottom: 2rem;
-    box-shadow: var(--card-shadow);
+    box-shadow: 
+        0 2px 8px rgba(255, 20, 147, 0.08),
+        0 4px 16px rgba(255, 20, 147, 0.06);
     border-radius: $borderRadius;
+    transition: all 0.3s ease;
+
+    &:hover {
+        box-shadow: 
+            0 4px 12px rgba(255, 20, 147, 0.12),
+            0 8px 24px rgba(255, 20, 147, 0.1);
+        transform: translateY(-2px);
+    }
 
     &:last-child {
         margin-bottom: 0;
@@ -23,5 +33,91 @@
     &.p-toast-top-left,
     &.p-toast-top-center {
         top: 100px;
+    }
+}
+
+/* Custom Button Styling - Pink theme */
+.p-button {
+    &.p-button-rounded {
+        border-radius: 24px;
+    }
+
+    &:not(.p-button-text):not(.p-button-secondary):not(.p-button-danger) {
+        &.p-button-primary,
+        &:not([class*="p-button-"]) {
+            background-color: #ff1493;
+            border-color: #ff1493;
+            
+            &:hover {
+                background-color: #e60080;
+                border-color: #e60080;
+            }
+            
+            &:focus {
+                background-color: #ff1493;
+                border-color: #ff1493;
+                box-shadow: 0 0 0 0.2rem rgba(255, 20, 147, 0.5);
+            }
+            
+            &:active {
+                background-color: #c20060;
+                border-color: #c20060;
+            }
+        }
+    }
+}
+
+/* Button on topbar */
+.layout-topbar {
+    .layout-topbar-button {
+        i {
+            color: #cc0066;
+        }
+        
+        &:hover i {
+            color: #ff1493;
+        }
+    }
+}
+
+/* Product card specific adjustments for nicer spacing and alignment */
+.product-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 1.25rem;
+    min-height: 480px;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+
+    .product-image-container {
+        height: 260px;
+        overflow: hidden;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .product-info {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding-top: 0.5rem;
+    }
+
+    .product-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    &:hover {
+        transform: translateY(-4px);
+    }
+
+    @media (max-width: 768px) {
+        min-height: 420px;
+        .product-image-container { height: 220px; }
     }
 }

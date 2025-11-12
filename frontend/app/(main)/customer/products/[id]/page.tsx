@@ -1,16 +1,15 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
 import { Button } from 'primereact/button';
-import { Rating } from 'primereact/rating';
 import { Tag } from 'primereact/tag';
 import { Toast } from 'primereact/toast';
 import { Galleria } from 'primereact/galleria';
 import { InputNumber } from 'primereact/inputnumber';
 import { Divider } from 'primereact/divider';
 import { TabView, TabPanel } from 'primereact/tabview';
-import { Avatar } from 'primereact/avatar';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { productAPI } from '@/services/api';
 
 interface Product {
     id: number;
@@ -19,120 +18,86 @@ interface Product {
     price: number;
     oldPrice?: number;
     stock: number;
-    rating: number;
-    reviews: number;
     description: string;
     images: string[];
-    specifications: { label: string; value: string }[];
     detailDescription: string;
-}
-
-interface Review {
-    id: number;
-    userName: string;
-    rating: number;
-    date: string;
-    comment: string;
-    avatar?: string;
+    sold_count?: number;
 }
 
 const ProductDetailPage = ({ params }: { params: { id: string } }) => {
     const router = useRouter();
     const toast = useRef<Toast>(null);
     const [quantity, setQuantity] = useState<number>(1);
+    const [selectedSize, setSelectedSize] = useState<number>(30);
+    const [product, setProduct] = useState<Product | null>(null);
+    const [loading, setLoading] = useState<boolean>(true);
 
-    // Mock data - trong thực tế sẽ fetch từ API dựa trên params.id
-    const product: Product = {
-        id: parseInt(params.id),
-        name: 'Cải Thảo Hữu Cơ',
-        category: 'Rau Củ Quả',
-        price: 25000,
-        stock: 150,
-        rating: 4.5,
-        reviews: 24,
-        description: 'Cải thảo hữu cơ tươi sạch, không hóa chất, được trồng theo tiêu chuẩn VietGAP',
-        images: [
-            'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600',
-            'https://images.unsplash.com/photo-1597362925123-77861d3fbac7?w=600',
-            'https://images.unsplash.com/photo-1574943320219-553eb213f72d?w=600',
-            'https://images.unsplash.com/photo-1590779033100-9f60a05a013d?w=600'
-        ],
-        specifications: [
-            { label: 'Xuất xứ', value: 'Đà Lạt, Việt Nam' },
-            { label: 'Trọng lượng', value: '500g - 700g/bó' },
-            { label: 'Bảo quản', value: 'Nhiệt độ 2-4°C' },
-            { label: 'Hạn sử dụng', value: '3-5 ngày kể từ ngày thu hoạch' },
-            { label: 'Chứng nhận', value: 'VietGAP, Hữu cơ' }
-        ],
-        detailDescription: `
-            <h3>Giới thiệu sản phẩm</h3>
-            <p>Cải thảo hữu cơ của chúng tôi được trồng theo tiêu chuẩn hữu cơ nghiêm ngặt tại Đà Lạt - vùng đất nổi tiếng với khí hậu mát mẻ, lý tưởng cho việc trồng rau củ.</p>
-            
-            <h3>Đặc điểm nổi bật</h3>
-            <ul>
-                <li>100% không sử dụng thuốc trừ sâu hóa học</li>
-                <li>Không sử dụng phân bón tổng hợp</li>
-                <li>Giàu vitamin C, K và chất xơ</li>
-                <li>Lá xanh tươi, giòn ngọt tự nhiên</li>
-                <li>Được kiểm tra chất lượng nghiêm ngặt trước khi đóng gói</li>
-            </ul>
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true);
+            try {
+                const resp = await productAPI.getById(Number(params.id));
+                const p = resp && resp.data ? resp.data : resp;
+                const normalized: Product = {
+                    id: Number(p.id),
+                    name: p.name || p.title || '',
+                    category: p.category_name || (p.category && p.category.name) || '',
+                    price: Number(p.price || 0),
+                    oldPrice: p.old_price || p.oldPrice,
+                    stock: Number(p.stock || p.quantity || 0),
+                    description: p.description || p.short_description || '',
+                    images: Array.isArray(p.images) && p.images.length ? p.images : p.main_image_url ? [p.main_image_url] : p.main_image ? [p.main_image] : [],
+                    sold_count: Number(p.sold_count || p.soldCount || 0),
+                    detailDescription: p.detail_description || p.detailDescription || p.full_description || ''
+                };
+                setProduct(normalized);
+            } catch (err) {
+                console.error('Failed to load product', err);
+                toast.current?.show({ severity: 'error', summary: 'Lỗi', detail: 'Không thể tải sản phẩm' });
+            } finally {
+                setLoading(false);
+            }
+        };
 
-            <h3>Công dụng</h3>
-            <p>Cải thảo là nguyên liệu tuyệt vời cho nhiều món ăn như: lẩu, xào, nấu canh, muối chua, kim chi...</p>
+        load();
+    }, [params.id]);
 
-            <h3>Cách bảo quản</h3>
-            <p>Để cải thảo trong ngăn mát tủ lạnh (2-4°C), bọc kín trong túi nilon hoặc hộp kín. Sử dụng trong vòng 3-5 ngày để đảm bảo độ tươi ngon.</p>
-        `
-    };
+    if (loading) {
+        return (
+            <div className="p-6 text-center">
+                <i className="pi pi-spin pi-spinner text-3xl text-primary mb-3" />
+                <div>Đang tải sản phẩm...</div>
+            </div>
+        );
+    }
 
-    const reviews: Review[] = [
-        {
-            id: 1,
-            userName: 'Nguyễn Văn A',
-            rating: 5,
-            date: '2024-11-05',
-            comment: 'Cải thảo rất tươi và sạch, gia đình tôi rất hài lòng. Sẽ ủng hộ shop thường xuyên!',
-            avatar: 'https://i.pravatar.cc/150?u=user1'
-        },
-        {
-            id: 2,
-            userName: 'Trần Thị B',
-            rating: 4,
-            date: '2024-11-03',
-            comment: 'Chất lượng tốt, đúng như mô tả. Giao hàng nhanh.',
-            avatar: 'https://i.pravatar.cc/150?u=user2'
-        },
-        {
-            id: 3,
-            userName: 'Lê Minh C',
-            rating: 5,
-            date: '2024-11-01',
-            comment: 'Rau rất tươi, ngọt và sạch. Giá cả hợp lý. Recommend!',
-            avatar: 'https://i.pravatar.cc/150?u=user3'
-        }
-    ];
+    if (!product) {
+        return (
+            <div className="p-6 text-center">
+                <h3 className="text-900">Sản phẩm không tồn tại</h3>
+                <p className="text-600">Không tìm thấy sản phẩm theo ID này.</p>
+            </div>
+        );
+    }
 
     const relatedProducts = [
         {
             id: 6,
             name: 'Cà Chua Bi',
             price: 35000,
-            image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300',
-            rating: 4.3
+            image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300'
         },
         {
             id: 2,
             name: 'Thịt Bò Úc',
             price: 350000,
-            image: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=300',
-            rating: 5
+            image: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=300'
         },
         {
             id: 4,
             name: 'Trứng Gà Organic',
             price: 65000,
-            image: 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=300',
-            rating: 4.7
+            image: 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=300'
         }
     ];
 
@@ -196,11 +161,8 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                             <h1 className="text-4xl font-bold text-900 mb-3">{product.name}</h1>
 
                             <div className="flex align-items-center gap-3 mb-4">
-                                <Rating value={product.rating} readOnly cancel={false} />
-                                <span className="text-600">({product.reviews} đánh giá)</span>
-                                <Divider layout="vertical" />
                                 <span className="text-600">
-                                    Đã bán: <span className="font-semibold text-900">238</span>
+                                    Đã bán: <span className="font-semibold text-900">{product.sold_count ?? 0}</span>
                                 </span>
                             </div>
 
@@ -276,58 +238,7 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                             <div className="text-600 line-height-3" dangerouslySetInnerHTML={{ __html: product.detailDescription }} />
                         </TabPanel>
 
-                        <TabPanel header="Thông số kỹ thuật">
-                            <div className="grid">
-                                {product.specifications.map((spec, index) => (
-                                    <React.Fragment key={index}>
-                                        <div className="col-12 md:col-4 font-semibold text-900 py-3">{spec.label}</div>
-                                        <div className="col-12 md:col-8 text-600 py-3">{spec.value}</div>
-                                        {index < product.specifications.length - 1 && (
-                                            <div className="col-12">
-                                                <Divider />
-                                            </div>
-                                        )}
-                                    </React.Fragment>
-                                ))}
-                            </div>
-                        </TabPanel>
-
-                        <TabPanel header={`Đánh giá (${reviews.length})`}>
-                            <div className="mb-4">
-                                <div className="flex align-items-center gap-4 mb-4">
-                                    <div className="text-center">
-                                        <div className="text-5xl font-bold text-primary mb-2">{product.rating.toFixed(1)}</div>
-                                        <Rating value={product.rating} readOnly cancel={false} className="mb-2" />
-                                        <div className="text-sm text-600">{product.reviews} đánh giá</div>
-                                    </div>
-                                    <Divider layout="vertical" />
-                                    <div className="flex-1">
-                                        <Button label="Viết đánh giá của bạn" icon="pi pi-pencil" className="p-button-outlined" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            <Divider />
-
-                            {reviews.map((review) => (
-                                <div key={review.id} className="mb-4">
-                                    <div className="flex gap-3">
-                                        <Avatar image={review.avatar} size="large" shape="circle" />
-                                        <div className="flex-1">
-                                            <div className="flex align-items-center justify-content-between mb-2">
-                                                <div>
-                                                    <div className="font-semibold text-900 mb-1">{review.userName}</div>
-                                                    <Rating value={review.rating} readOnly cancel={false} className="text-sm" />
-                                                </div>
-                                                <span className="text-sm text-600">{new Date(review.date).toLocaleDateString('vi-VN')}</span>
-                                            </div>
-                                            <p className="text-600 line-height-3 m-0">{review.comment}</p>
-                                        </div>
-                                    </div>
-                                    <Divider />
-                                </div>
-                            ))}
-                        </TabPanel>
+                        {/* Technical specs removed per UX request */}
                     </TabView>
                 </div>
             </div>
@@ -344,7 +255,6 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                                     <div className="text-lg font-semibold text-900 mb-2">{relProduct.name}</div>
                                     <div className="flex align-items-center justify-content-between">
                                         <span className="text-xl font-bold text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(relProduct.price)}</span>
-                                        <Rating value={relProduct.rating} readOnly cancel={false} className="text-sm" />
                                     </div>
                                 </div>
                             </div>

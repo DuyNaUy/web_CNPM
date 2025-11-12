@@ -12,7 +12,8 @@ import { InputText } from 'primereact/inputtext';
 import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
 import { Avatar } from 'primereact/avatar';
-import { authAPI, getStoredUser, removeAuthTokens } from '../services/api';
+import { Dropdown } from 'primereact/dropdown';
+import { authAPI, getStoredUser, removeAuthTokens, categoryAPI } from '../services/api';
 
 const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
     const { layoutConfig, layoutState, onMenuToggle, showProfileSidebar, role, setRole } = useContext(LayoutContext);
@@ -26,6 +27,8 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
     const [profileDialogVisible, setProfileDialogVisible] = useState(false);
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<any>(null);
+    const [categories, setCategories] = useState<any[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
     const [formData, setFormData] = useState({
         full_name: '',
         phone: '',
@@ -44,6 +47,33 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
             });
         }
     }, []);
+
+    // Load categories khi role là customer
+    useEffect(() => {
+        if (role === 'customer') {
+            loadCategories();
+        }
+    }, [role]);
+
+    const loadCategories = async () => {
+        try {
+            const response = await categoryAPI.getActive();
+            if (response && Array.isArray(response)) {
+                setCategories(response);
+            }
+        } catch (error) {
+            console.error('Error loading categories:', error);
+        }
+    };
+
+    const handleCategoryChange = (categoryId: number | null) => {
+        if (categoryId === null) {
+            router.push('/customer/products');
+        } else {
+            router.push(`/customer/products?category=${categoryId}`);
+        }
+        setSelectedCategory(categoryId);
+    };
 
     const handleShowProfile = () => {
         setProfileDialogVisible(true);
@@ -121,8 +151,8 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
             <Toast ref={toast} />
             <div className="layout-topbar">
                 <Link href="/" className="layout-topbar-logo">
-                    <img src={`/layout/images/logo-${layoutConfig.colorScheme !== 'light' ? 'white' : 'dark'}.svg`} width="47.22px" height={'35px'} alt="logo" />
-                    <span className="hidden md:inline-block">{role === 'admin' ? 'ADMIN THỰC PHẨM' : role === 'seller' ? 'QUẢN LÝ BÁN HÀNG' : 'CỬA HÀNG THỰC PHẨM'}</span>
+                    <img src="/layout/images/logo1.png" width="47.22px" height={'35px'} alt="logo" />
+                    <span className="hidden md:inline-block">{role === 'admin' ? 'TEDDY SHOP ADMIN' : 'TEDDY SHOP'}</span>
                 </Link>
 
                 <button ref={menubuttonRef} type="button" className="p-link layout-menu-button layout-topbar-button" onClick={onMenuToggle}>
@@ -132,6 +162,26 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                 {/* Menu chức năng khách hàng - hiển thị khi role là customer */}
                 {role === 'customer' && (
                     <div className="flex-1 flex align-items-center justify-content-center gap-3">
+                        <div className="hidden md:flex align-items-center" style={{ minWidth: '200px' }}>
+                            <Dropdown
+                                value={selectedCategory}
+                                onChange={(e) => handleCategoryChange(e.value)}
+                                options={[
+                                    { label: 'Sản phẩm của Gấu Bông', value: null },
+                                    ...categories.map((cat) => ({
+                                        label: cat.name,
+                                        value: cat.id
+                                    }))
+                                ]}
+                                placeholder="Chọn danh mục"
+                                className="w-full"
+                                style={{
+                                    backgroundColor: '#fff',
+                                    borderColor: '#ffddeb',
+                                    color: '#333'
+                                }}
+                            />
+                        </div>
                         <Link href="/customer/products" className="p-link layout-topbar-button">
                             <i className="pi pi-shopping-bag"></i>
                             <span className="hidden md:inline-block ml-2">Sản Phẩm</span>
@@ -144,10 +194,6 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                         <Link href="/customer/orders" className="p-link layout-topbar-button">
                             <i className="pi pi-list"></i>
                             <span className="hidden md:inline-block ml-2">Đơn Hàng</span>
-                        </Link>
-                        <Link href="/customer/reviews" className="p-link layout-topbar-button">
-                            <i className="pi pi-star"></i>
-                            <span className="hidden md:inline-block ml-2">Đánh Giá</span>
                         </Link>
                     </div>
                 )}
@@ -219,12 +265,12 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                                 <span
                                     className="px-3 py-1 border-round font-semibold"
                                     style={{
-                                        backgroundColor: user?.role === 'admin' ? 'var(--red-100)' : user?.role === 'seller' ? 'var(--cyan-100)' : 'var(--blue-100)',
-                                        color: user?.role === 'admin' ? 'var(--red-700)' : user?.role === 'seller' ? 'var(--cyan-700)' : 'var(--blue-700)'
+                                        backgroundColor: user?.role === 'admin' ? 'var(--red-100)' : 'var(--blue-100)',
+                                        color: user?.role === 'admin' ? 'var(--red-700)' : 'var(--blue-700)'
                                     }}
                                 >
-                                    <i className={`pi ${user?.role === 'admin' ? 'pi-shield' : user?.role === 'seller' ? 'pi-briefcase' : 'pi-user'} mr-2`}></i>
-                                    {user?.role === 'admin' ? 'Quản trị viên' : user?.role === 'seller' ? 'Người bán' : 'Khách hàng'}
+                                    <i className={`pi ${user?.role === 'admin' ? 'pi-shield' : 'pi-user'} mr-2`}></i>
+                                    {user?.role === 'admin' ? 'Quản trị viên' : 'Khách hàng'}
                                 </span>
                             </div>
                         </div>

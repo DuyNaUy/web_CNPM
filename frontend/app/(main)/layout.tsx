@@ -7,8 +7,8 @@ interface MainLayoutProps {
 }
 
 export const metadata: Metadata = {
-    title: 'Web Bán Thực Phẩm',
-    description: 'Hệ thống bán thực phẩm trực tuyến'
+    title: 'Teddy Shop - Cửa Hàng Gấu Bông',
+    description: 'Hệ thống bán gấu bông trực tuyến - Chất lượng cao, giao hàng nhanh'
 };
 
 export default function MainLayout({ children }: MainLayoutProps) {

@@ -92,14 +92,12 @@ const AccountsPage = () => {
 
     const roles = [
         { label: 'Quản trị viên', value: 'admin' },
-        { label: 'Người bán', value: 'seller' },
         { label: 'Khách hàng', value: 'customer' }
     ];
 
     const filterRoles = [
         { label: 'Tất cả vai trò', value: null },
         { label: 'Quản trị viên', value: 'admin' },
-        { label: 'Người bán', value: 'seller' },
         { label: 'Khách hàng', value: 'customer' }
     ];
 
@@ -345,12 +343,10 @@ const AccountsPage = () => {
     const roleBodyTemplate = (rowData: Account) => {
         const roleLabels: any = {
             admin: 'Admin',
-            seller: 'Người bán',
             customer: 'Khách hàng'
         };
         const roleSeverities: any = {
             admin: 'danger',
-            seller: 'info',
             customer: 'warning'
         };
         return <Tag value={roleLabels[rowData.role]} severity={roleSeverities[rowData.role]} />;

@@ -45,9 +45,9 @@ export interface LayoutContextProps {
     setLayoutState: Dispatch<SetStateAction<LayoutState>>;
     onMenuToggle: () => void;
     showProfileSidebar: () => void;
-    /** role of current user view - 'admin', 'seller' or 'customer' */
-    role: 'admin' | 'seller' | 'customer';
-    setRole: Dispatch<SetStateAction<'admin' | 'seller' | 'customer'>>;
+    /** role of current user view - 'admin' or 'customer' */
+    role: 'admin' | 'customer';
+    setRole: Dispatch<SetStateAction<'admin' | 'customer'>>;
 }
 
 export interface MenuContextProps {

@@ -34,7 +34,6 @@ interface Product {
     category: number;
     category_name?: string;
     price: number;
-    old_price?: number;
     stock: number;
     unit: string;
     rating?: number;
@@ -46,16 +45,14 @@ interface Product {
     main_image_url?: string;
     images?: string;
     product_images?: ProductImage[];
-    specifications?: string;
     origin?: string;
-    weight?: string;
-    preservation?: string;
-    expiry?: string;
-    certification?: string;
+    size?: string;
+    color?: string;
     status: string;
     is_featured?: boolean;
     created_at?: string;
     updated_at?: string;
+    
 }
 
 interface Category {
@@ -75,17 +72,14 @@ const ProductsPage = () => {
         name: '',
         category: 0,
         price: 0,
-        old_price: 0,
         stock: 0,
-        unit: 'kg',
+        unit: '30cm',
         status: 'active',
         description: '',
         detail_description: '',
         origin: '',
-        weight: '',
-        preservation: '',
-        expiry: '',
-        certification: ''
+        size: '',
+        color: '',
     });
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -100,13 +94,9 @@ const ProductsPage = () => {
     const galleryUploadRef = useRef<FileUpload>(null);
 
     const units = [
-        { label: 'Kg', value: 'kg' },
-        { label: 'Gram', value: 'gram' },
-        { label: 'Gói', value: 'gói' },
-        { label: 'Hộp', value: 'hộp' },
-        { label: 'Chai', value: 'chai' },
-        { label: 'Túi', value: 'túi' },
-        { label: 'Thùng', value: 'thùng' }
+        { label: '30cm', value: '30cm' },
+        { label: '60cm', value: '60cm' },
+        { label: '90cm', value: '90cm' }
     ];
 
     const statuses = [
@@ -200,17 +190,14 @@ const ProductsPage = () => {
             name: '',
             category: 0,
             price: 0,
-            old_price: 0,
             stock: 0,
-            unit: 'kg',
+            unit: '30cm',
             status: 'active',
             description: '',
             detail_description: '',
             origin: '',
-            weight: '',
-            preservation: '',
-            expiry: '',
-            certification: ''
+            size: '',
+            color: '',
         });
         setSelectedFile(null);
         setPreviewImage(null);
@@ -274,17 +261,12 @@ const ProductsPage = () => {
             formData.append('status', product.status);
             formData.append('description', product.description || '');
 
-            if (product.old_price && product.old_price > 0) {
-                formData.append('old_price', product.old_price.toString());
-            }
             if (product.detail_description) {
                 formData.append('detail_description', product.detail_description);
             }
             if (product.origin) formData.append('origin', product.origin);
-            if (product.weight) formData.append('weight', product.weight);
-            if (product.preservation) formData.append('preservation', product.preservation);
-            if (product.expiry) formData.append('expiry', product.expiry);
-            if (product.certification) formData.append('certification', product.certification);
+            if (product.size) formData.append('size', product.size);
+            if (product.color) formData.append('color', product.color);
 
             if (selectedFile) {
                 formData.append('main_image', selectedFile);
@@ -345,13 +327,10 @@ const ProductsPage = () => {
             // Ensure all fields have default values to avoid undefined
             setProduct({
                 ...fullProduct,
-                old_price: fullProduct.old_price || 0,
                 detail_description: fullProduct.detail_description || '',
                 origin: fullProduct.origin || '',
-                weight: fullProduct.weight || '',
-                preservation: fullProduct.preservation || '',
-                expiry: fullProduct.expiry || '',
-                certification: fullProduct.certification || ''
+                size: fullProduct.size || '',
+                color: fullProduct.color || ''
             });
 
             setPreviewImage(fullProduct.main_image_url || null);
@@ -513,7 +492,14 @@ const ProductsPage = () => {
     const leftToolbarTemplate = () => {
         return (
             <div className="flex flex-wrap gap-2">
-                <Button label="Thêm mới" icon="pi pi-plus" severity="success" onClick={openNew} />
+                <Button 
+                    label="Thêm mới" 
+                    icon="pi pi-plus" 
+                    severity="success" 
+                    onClick={openNew}
+                    className="p-button-rounded p-button-lg"
+                    style={{ backgroundColor: '#ff1493', borderColor: '#ff1493' }}
+                />
             </div>
         );
     };
@@ -521,8 +507,41 @@ const ProductsPage = () => {
     const actionBodyTemplate = (rowData: Product) => {
         return (
             <React.Fragment>
-                <Button icon="pi pi-pencil" rounded outlined className="mr-2" onClick={() => editProduct(rowData)} />
-                <Button icon="pi pi-trash" rounded outlined severity="danger" onClick={() => confirmDeleteProduct(rowData)} />
+                <div className="action-buttons" style={{ display: 'flex', gap: '0.5rem' }}>
+                    <Button 
+                        icon="pi pi-pencil" 
+                        rounded 
+                        outlined 
+                        className="p-button-rounded"
+                        onClick={() => editProduct(rowData)}
+                        style={{ 
+                            backgroundColor: '#ff1493', 
+                            borderColor: '#ff1493', 
+                            color: 'white',
+                            width: '40px',
+                            height: '40px',
+                            padding: '0'
+                        }}
+                        title="Chỉnh sửa"
+                    />
+                    <Button 
+                        icon="pi pi-trash" 
+                        rounded 
+                        outlined 
+                        severity="danger" 
+                        className="p-button-rounded"
+                        onClick={() => confirmDeleteProduct(rowData)}
+                        style={{ 
+                            backgroundColor: '#ff6b9d', 
+                            borderColor: '#ff6b9d', 
+                            color: 'white',
+                            width: '40px',
+                            height: '40px',
+                            padding: '0'
+                        }}
+                        title="Xóa"
+                    />
+                </div>
             </React.Fragment>
         );
     };
@@ -611,15 +630,42 @@ const ProductsPage = () => {
 
     const productDialogFooter = (
         <React.Fragment>
-            <Button label="Hủy" icon="pi pi-times" outlined onClick={hideDialog} />
-            <Button label="Lưu" icon="pi pi-check" onClick={saveProduct} />
+            <Button 
+                label="Hủy" 
+                icon="pi pi-times" 
+                outlined 
+                onClick={hideDialog}
+                style={{ color: '#999', borderColor: '#ddd' }}
+                className="p-button-lg"
+            />
+            <Button 
+                label="Lưu" 
+                icon="pi pi-check" 
+                onClick={saveProduct}
+                style={{ backgroundColor: '#ff1493', borderColor: '#ff1493' }}
+                className="p-button-lg"
+            />
         </React.Fragment>
     );
 
     const deleteProductDialogFooter = (
         <React.Fragment>
-            <Button label="Không" icon="pi pi-times" outlined onClick={hideDeleteProductDialog} />
-            <Button label="Có" icon="pi pi-check" severity="danger" onClick={deleteProduct} />
+            <Button 
+                label="Không" 
+                icon="pi pi-times" 
+                outlined 
+                onClick={hideDeleteProductDialog}
+                style={{ color: '#999', borderColor: '#ddd' }}
+                className="p-button-lg"
+            />
+            <Button 
+                label="Có, xóa" 
+                icon="pi pi-check" 
+                severity="danger" 
+                onClick={deleteProduct}
+                style={{ backgroundColor: '#ff3366', borderColor: '#ff3366' }}
+                className="p-button-lg"
+            />
         </React.Fragment>
     );
 
@@ -686,14 +732,6 @@ const ProductsPage = () => {
                                         </div>
 
                                         <div className="field">
-                                            <label htmlFor="old_price" className="font-semibold">
-                                                Giá cũ (VNĐ)
-                                            </label>
-                                            <InputNumber id="old_price" value={product.old_price} onValueChange={(e) => onNumberChange(e.value, 'old_price')} mode="currency" currency="VND" locale="vi-VN" />
-                                            <small className="text-500">Để trống nếu không có giá khuyến mãi</small>
-                                        </div>
-
-                                        <div className="field">
                                             <label htmlFor="stock" className="font-semibold">
                                                 Số lượng tồn kho
                                             </label>
@@ -702,9 +740,9 @@ const ProductsPage = () => {
 
                                         <div className="field">
                                             <label htmlFor="unit" className="font-semibold">
-                                                Đơn vị tính
+                                                Size
                                             </label>
-                                            <Dropdown id="unit" value={product.unit} options={units} onChange={(e) => onDropdownChange(e, 'unit')} placeholder="Chọn đơn vị" />
+                                            <Dropdown id="unit" value={product.unit} options={units} onChange={(e) => onDropdownChange(e, 'unit')} placeholder="Chọn size" />
                                         </div>
                                     </div>
 
@@ -714,7 +752,14 @@ const ProductsPage = () => {
                                             {previewImage ? (
                                                 <div className="flex flex-column align-items-center">
                                                     <Image src={previewImage} alt="Preview" width="300" preview />
-                                                    <Button label="Xóa hình ảnh" icon="pi pi-times" className="p-button-danger p-button-sm mt-2" onClick={onFileRemove} type="button" />
+                                                    <Button 
+                                                        label="Xóa hình ảnh" 
+                                                        icon="pi pi-times" 
+                                                        className="p-button-danger p-button-sm mt-2"
+                                                        onClick={onFileRemove} 
+                                                        type="button"
+                                                        style={{ backgroundColor: '#ff3366', borderColor: '#ff3366' }}
+                                                    />
                                                 </div>
                                             ) : (
                                                 <FileUpload ref={fileUploadRef} mode="basic" name="image" accept="image/*" maxFileSize={5000000} onSelect={onFileSelect} chooseLabel="Chọn hình ảnh" className="w-full" auto />
@@ -759,33 +804,17 @@ const ProductsPage = () => {
                                         </div>
 
                                         <div className="field">
-                                            <label htmlFor="weight" className="font-semibold">
-                                                Trọng lượng
+                                            <label htmlFor="size" className="font-semibold">
+                                                Kích thước
                                             </label>
-                                            <InputText id="weight" value={product.weight} onChange={(e) => onInputChange(e, 'weight')} placeholder="VD: 500g, 1kg..." />
+                                            <InputText id="size" value={product.size} onChange={(e) => onInputChange(e, 'size')} placeholder="VD: 30cm, 60cm, 90cm..." />
                                         </div>
 
                                         <div className="field">
-                                            <label htmlFor="preservation" className="font-semibold">
-                                                Cách bảo quản
+                                            <label htmlFor="color" className="font-semibold">
+                                                Màu sắc
                                             </label>
-                                            <InputTextarea id="preservation" value={product.preservation} onChange={(e) => onInputChange(e, 'preservation')} rows={3} placeholder="VD: Bảo quản trong ngăn mát tủ lạnh..." />
-                                        </div>
-                                    </div>
-
-                                    <div className="col-12 md:col-6">
-                                        <div className="field">
-                                            <label htmlFor="expiry" className="font-semibold">
-                                                Hạn sử dụng
-                                            </label>
-                                            <InputText id="expiry" value={product.expiry} onChange={(e) => onInputChange(e, 'expiry')} placeholder="VD: 7 ngày, 30 ngày..." />
-                                        </div>
-
-                                        <div className="field">
-                                            <label htmlFor="certification" className="font-semibold">
-                                                Chứng nhận
-                                            </label>
-                                            <InputTextarea id="certification" value={product.certification} onChange={(e) => onInputChange(e, 'certification')} rows={3} placeholder="VD: HACCP, VietGAP, Organic..." />
+                                            <InputText id="color" value={product.color} onChange={(e) => onInputChange(e, 'color')} placeholder="VD: Hồng, Vàng, Xanh..." />
                                         </div>
                                     </div>
                                 </div>
@@ -858,7 +887,9 @@ const ProductsPage = () => {
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                        <Button label={`Tải lên ${additionalImages.length} ảnh`} icon="pi pi-upload" className="mt-3" onClick={uploadGalleryImages} loading={loading} />
+                                                        <Button label={`Tải lên ${additionalImages.length} ảnh`} icon="pi pi-upload" className="mt-3" onClick={uploadGalleryImages} loading={loading}
+                                                            style={{ backgroundColor: '#ff1493', borderColor: '#ff1493' }}
+                                                        />
                                                     </>
                                                 )}
                                             </div>

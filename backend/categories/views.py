@@ -3,8 +3,19 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.db.models import Q
+from django.db import IntegrityError
 from .models import Category
 from .serializers import CategorySerializer
+
+
+class IsAdminUser:
+    """Custom permission to check if user is admin"""
+    def has_permission(self, request, view):
+        return bool(
+            request.user and 
+            request.user.is_authenticated and 
+            (request.user.is_staff or getattr(request.user, 'role', None) == 'admin')
+        )
 
 class CategoryViewSet(viewsets.ModelViewSet):
     """
@@ -23,8 +34,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
         Cho phép mọi người xem danh sách và chi tiết danh mục
         Chỉ admin mới được tạo, sửa, xóa
         """
-        if self.action in ['list', 'retrieve']:
+        if self.action in ['list', 'retrieve', 'active']:
             permission_classes = [AllowAny]
+        elif self.action in ['create', 'update', 'partial_update', 'destroy', 'toggle_status']:
+            permission_classes = [IsAuthenticated, IsAdminUser]
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
@@ -84,22 +97,48 @@ class CategoryViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         """Xóa danh mục"""
+        # Kiểm tra quyền admin
+        if not (request.user.is_staff or getattr(request.user, 'role', None) == 'admin'):
+            return Response(
+                {'error': 'Bạn không có quyền xóa danh mục'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         instance = self.get_object()
         
         # Kiểm tra xem danh mục có sản phẩm không
         if hasattr(instance, 'products') and instance.products.exists():
+            product_count = instance.products.count()
             return Response(
                 {
-                    'error': 'Không thể xóa danh mục đang chứa sản phẩm. Vui lòng xóa hoặc chuyển sản phẩm sang danh mục khác trước.'
+                    'error': f'Không thể xóa danh mục này vì đang chứa {product_count} sản phẩm. Vui lòng xóa hoặc chuyển sản phẩm sang danh mục khác trước.'
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        self.perform_destroy(instance)
-        return Response(
-            {'message': 'Xóa danh mục thành công'},
-            status=status.HTTP_200_OK
-        )
+        try:
+            category_name = instance.name
+            self.perform_destroy(instance)
+            return Response(
+                {
+                    'message': f'Xóa danh mục "{category_name}" thành công',
+                    'data': {
+                        'id': instance.id,
+                        'name': category_name
+                    }
+                },
+                status=status.HTTP_200_OK
+            )
+        except IntegrityError as e:
+            return Response(
+                {'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Lỗi khi xóa danh mục: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -119,3 +158,54 @@ class CategoryViewSet(viewsets.ModelViewSet):
             'message': f'Đã chuyển trạng thái danh mục thành {category.get_status_display()}',
             'data': serializer.data
         })
+    
+    @action(detail=True, methods=['post'])
+    def delete_category(self, request, pk=None):
+        """
+        Admin endpoint để xóa danh mục
+        Kiểm tra xem danh mục có sản phẩm hay không
+        """
+        # Kiểm tra quyền admin
+        if not (request.user.is_staff or getattr(request.user, 'role', None) == 'admin'):
+            return Response(
+                {'error': 'Bạn không có quyền xóa danh mục'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        category = self.get_object()
+        
+        # Kiểm tra xem danh mục có sản phẩm không
+        if hasattr(category, 'products') and category.products.exists():
+            product_count = category.products.count()
+            return Response(
+                {
+                    'error': f'Không thể xóa danh mục này vì đang chứa {product_count} sản phẩm',
+                    'product_count': product_count
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            category_id = category.id
+            category_name = category.name
+            category.delete()
+            return Response(
+                {
+                    'message': f'Xóa danh mục "{category_name}" thành công',
+                    'data': {
+                        'id': category_id,
+                        'name': category_name
+                    }
+                },
+                status=status.HTTP_200_OK
+            )
+        except IntegrityError:
+            return Response(
+                {'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Lỗi khi xóa danh mục: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

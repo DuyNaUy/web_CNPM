@@ -8,69 +8,41 @@ import { InputText } from 'primereact/inputtext';
 import { Dropdown } from 'primereact/dropdown';
 import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Tag } from 'primereact/tag';
+import { orderAPI } from '@/services/api';
+
+interface OrderItem {
+    id: number;
+    product_name: string;
+    product_price: number;
+    quantity: number;
+    unit: string;
+}
 
 interface Order {
     id: number;
-    orderCode: string;
-    customerName: string;
-    customerPhone: string;
-    totalAmount: number;
+    order_code: string;
+    full_name: string;
+    phone: string;
+    total_amount: number;
     status: string;
-    paymentMethod: string;
-    orderDate: string;
+    payment_method: string;
+    created_at: string;
     address: string;
+    email: string;
+    city: string;
+    district: string;
+    note: string;
+    payment_status: string;
+    subtotal: number;
+    shipping_fee: number;
+    items: OrderItem[];
 }
 
 const OrdersPage = () => {
-    const [orders, setOrders] = useState<Order[]>([
-        {
-            id: 1,
-            orderCode: 'DH001',
-            customerName: 'Hoàng Văn Quang',
-            customerPhone: '0123456789',
-            totalAmount: 1500000,
-            status: 'pending',
-            paymentMethod: 'cod',
-            orderDate: '2024-11-08',
-            address: '123 Đường ABC, Quận 1, TP.HCM'
-        },
-        {
-            id: 2,
-            orderCode: 'DH002',
-            customerName: 'Nguyễn Hoàng Dương',
-            customerPhone: '0987654321',
-            totalAmount: 2300000,
-            status: 'processing',
-            paymentMethod: 'transfer',
-            orderDate: '2024-11-07',
-            address: '456 Đường XYZ, Quận 2, TP.HCM'
-        },
-        {
-            id: 3,
-            orderCode: 'DH003',
-            customerName: 'Lê Thu Mai',
-            customerPhone: '0912345678',
-            totalAmount: 850000,
-            status: 'completed',
-            paymentMethod: 'cod',
-            orderDate: '2024-11-06',
-            address: '789 Đường DEF, Quận 3, TP.HCM'
-        },
-        {
-            id: 4,
-            orderCode: 'DH004',
-            customerName: 'Lương Trọng Duy',
-            customerPhone: '0923456789',
-            totalAmount: 1200000,
-            status: 'cancelled',
-            paymentMethod: 'transfer',
-            orderDate: '2024-11-05',
-            address: '321 Đường GHI, Quận 4, TP.HCM'
-        }
-    ]);
-
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [loading, setLoading] = useState(false);
     const [orderDialog, setOrderDialog] = useState(false);
     const [order, setOrder] = useState<Order | null>(null);
     const [globalFilter, setGlobalFilter] = useState('');
@@ -78,11 +50,50 @@ const OrdersPage = () => {
 
     const statuses = [
         { label: 'Chờ xác nhận', value: 'pending' },
-        { label: 'Đang xử lý', value: 'processing' },
+        { label: 'Đã xác nhận', value: 'confirmed' },
         { label: 'Đang giao', value: 'shipping' },
-        { label: 'Hoàn thành', value: 'completed' },
+        { label: 'Đã giao', value: 'delivered' },
         { label: 'Đã hủy', value: 'cancelled' }
     ];
+
+    useEffect(() => {
+        loadOrders();
+    }, []);
+
+    const loadOrders = async () => {
+        setLoading(true);
+        try {
+            console.log('Loading orders...');
+            const response = await orderAPI.getAllOrders();
+            console.log('Orders response:', response);
+            
+            if (Array.isArray(response)) {
+                console.log('Orders are array:', response.length);
+                setOrders(response);
+            } else if (response.data && Array.isArray(response.data)) {
+                console.log('Orders in data:', response.data.length);
+                setOrders(response.data);
+            } else if (response.error) {
+                console.error('API error:', response.error);
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Lỗi',
+                    detail: response.error || 'Không thể tải danh sách đơn hàng',
+                    life: 3000
+                });
+            }
+        } catch (error: any) {
+            console.error('Loading orders error:', error);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Lỗi',
+                detail: error.message || 'Không thể tải danh sách đơn hàng',
+                life: 3000
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const viewOrder = (order: Order) => {
         setOrder({ ...order });
@@ -138,11 +149,17 @@ const OrdersPage = () => {
     };
 
     const paymentMethodBodyTemplate = (rowData: Order) => {
-        return rowData.paymentMethod === 'cod' ? 'Tiền mặt' : 'Chuyển khoản';
+        const methods: { [key: string]: string } = {
+            'cod': 'Tiền mặt',
+            'vnpay': 'VNPay',
+            'momo': 'Momo',
+            'banking': 'Chuyển khoản'
+        };
+        return methods[rowData.payment_method] || rowData.payment_method;
     };
 
     const totalAmountBodyTemplate = (rowData: Order) => {
-        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rowData.totalAmount);
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rowData.total_amount);
     };
 
     const header = (
@@ -177,14 +194,15 @@ const OrdersPage = () => {
                         currentPageReportTemplate="Hiển thị {first} đến {last} trong tổng số {totalRecords} đơn hàng"
                         globalFilter={globalFilter}
                         header={header}
+                        loading={loading}
                     >
-                        <Column field="orderCode" header="Mã đơn" sortable style={{ minWidth: '8rem' }}></Column>
-                        <Column field="customerName" header="Khách hàng" sortable style={{ minWidth: '12rem' }}></Column>
-                        <Column field="customerPhone" header="SĐT" sortable style={{ minWidth: '10rem' }}></Column>
-                        <Column field="totalAmount" header="Tổng tiền" body={totalAmountBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
-                        <Column field="paymentMethod" header="Thanh toán" body={paymentMethodBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
+                        <Column field="order_code" header="Mã đơn" sortable style={{ minWidth: '8rem' }}></Column>
+                        <Column field="full_name" header="Khách hàng" sortable style={{ minWidth: '12rem' }}></Column>
+                        <Column field="phone" header="SĐT" sortable style={{ minWidth: '10rem' }}></Column>
+                        <Column field="total_amount" header="Tổng tiền" body={totalAmountBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
+                        <Column field="payment_method" header="Thanh toán" body={paymentMethodBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
                         <Column field="status" header="Trạng thái" body={statusBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
-                        <Column field="orderDate" header="Ngày đặt" sortable style={{ minWidth: '10rem' }}></Column>
+                        <Column field="created_at" header="Ngày đặt" sortable style={{ minWidth: '10rem' }}></Column>
                         <Column body={actionBodyTemplate} exportable={false} style={{ minWidth: '8rem' }}></Column>
                     </DataTable>
 
@@ -199,25 +217,25 @@ const OrdersPage = () => {
                                                 <label>
                                                     <strong>Mã đơn hàng:</strong>
                                                 </label>
-                                                <p>{order.orderCode}</p>
+                                                <p>{order.order_code}</p>
                                             </div>
                                             <div className="field col-12 md:col-6">
                                                 <label>
                                                     <strong>Ngày đặt:</strong>
                                                 </label>
-                                                <p>{order.orderDate}</p>
+                                                <p>{order.created_at}</p>
                                             </div>
                                             <div className="field col-12 md:col-6">
                                                 <label>
                                                     <strong>Khách hàng:</strong>
                                                 </label>
-                                                <p>{order.customerName}</p>
+                                                <p>{order.full_name}</p>
                                             </div>
                                             <div className="field col-12 md:col-6">
                                                 <label>
                                                     <strong>Số điện thoại:</strong>
                                                 </label>
-                                                <p>{order.customerPhone}</p>
+                                                <p>{order.phone}</p>
                                             </div>
                                             <div className="field col-12">
                                                 <label>
@@ -229,13 +247,13 @@ const OrdersPage = () => {
                                                 <label>
                                                     <strong>Phương thức thanh toán:</strong>
                                                 </label>
-                                                <p>{order.paymentMethod === 'cod' ? 'Tiền mặt' : 'Chuyển khoản'}</p>
+                                                <p>{order.payment_method === 'cod' ? 'Tiền mặt' : 'Chuyển khoản'}</p>
                                             </div>
                                             <div className="field col-12 md:col-6">
                                                 <label>
                                                     <strong>Tổng tiền:</strong>
                                                 </label>
-                                                <p className="text-2xl text-primary font-bold">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.totalAmount)}</p>
+                                                <p className="text-2xl text-primary font-bold">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(order.total_amount)}</p>
                                             </div>
                                         </div>
                                     </div>

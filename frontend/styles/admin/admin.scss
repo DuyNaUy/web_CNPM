@@ -1,0 +1,342 @@
+/* Admin Page Styling */
+
+/* Action Buttons in DataTable */
+.p-datatable {
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+
+        .p-button {
+            padding: 0.5rem;
+            height: 2.5rem;
+            width: 2.5rem;
+
+            &.p-button-rounded {
+                border-radius: 50%;
+            }
+
+            /* Edit Button */
+            &.p-button-warning,
+            &:has(i.pi-pencil) {
+                background-color: #ff1493;
+                border-color: #ff1493;
+                color: white;
+
+                &:hover {
+                    background-color: #e60080;
+                    border-color: #e60080;
+                }
+
+                &:focus {
+                    box-shadow: 0 0 0 0.2rem rgba(255, 20, 147, 0.5);
+                }
+
+                i {
+                    color: white;
+                }
+            }
+
+            /* Delete Button */
+            &.p-button-danger {
+                background-color: #ff6b9d;
+                border-color: #ff6b9d;
+                color: white;
+
+                &:hover {
+                    background-color: #ff3366;
+                    border-color: #ff3366;
+                }
+
+                &:focus {
+                    box-shadow: 0 0 0 0.2rem rgba(255, 107, 157, 0.5);
+                }
+
+                i {
+                    color: white;
+                }
+            }
+        }
+    }
+}
+
+/* Toolbar Buttons */
+.p-toolbar {
+    background: transparent;
+    border: none;
+    padding: 0;
+    gap: 1rem;
+
+    .p-toolbar-group-left,
+    .p-toolbar-group-right {
+        gap: 0.75rem;
+    }
+
+    /* Add Button */
+    .p-button-success {
+        background-color: #ff1493;
+        border-color: #ff1493;
+
+        &:hover {
+            background-color: #e60080;
+            border-color: #e60080;
+        }
+
+        &:focus {
+            box-shadow: 0 0 0 0.2rem rgba(255, 20, 147, 0.5);
+        }
+
+        i {
+            margin-right: 0.5rem;
+        }
+    }
+
+    /* Save Button */
+    .p-button-primary {
+        background-color: #ff1493;
+        border-color: #ff1493;
+
+        &:hover {
+            background-color: #e60080;
+            border-color: #e60080;
+        }
+
+        &:focus {
+            box-shadow: 0 0 0 0.2rem rgba(255, 20, 147, 0.5);
+        }
+    }
+
+    /* Cancel/Secondary Button */
+    .p-button-secondary {
+        background-color: #ddd;
+        border-color: #ddd;
+        color: #333;
+
+        &:hover {
+            background-color: #ccc;
+            border-color: #ccc;
+        }
+    }
+}
+
+/* Dialog Buttons */
+.p-dialog {
+    .p-dialog-header {
+        background: linear-gradient(135deg, #ffc0d9 0%, #ffb3ce 100%);
+        color: white;
+        border-radius: 12px 12px 0 0;
+
+        .p-dialog-title {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .p-dialog-header-close {
+            color: #333;
+
+            &:hover {
+                background-color: rgba(255, 20, 147, 0.1);
+            }
+        }
+    }
+
+    .p-dialog-content {
+        padding: 2rem;
+    }
+
+    .p-dialog-footer {
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+        padding: 1rem 2rem;
+        border-top: 1px solid #f0f0f0;
+    }
+}
+
+/* Product Image Preview */
+.product-image-preview {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+
+    .image-item {
+        position: relative;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s;
+
+        &:hover {
+            transform: scale(1.05);
+
+            .image-remove-btn {
+                opacity: 1;
+            }
+        }
+
+        img {
+            width: 120px;
+            height: 120px;
+            object-fit: cover;
+            display: block;
+        }
+
+        .image-remove-btn {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            cursor: pointer;
+
+            i {
+                color: white;
+                font-size: 1.5rem;
+            }
+        }
+    }
+}
+
+/* Form Labels with Icons */
+.form-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #333;
+
+    i {
+        color: #ff1493;
+        font-size: 1.1rem;
+    }
+
+    .required {
+        color: #ff3366;
+        margin-left: 0.25rem;
+    }
+}
+
+/* Input Fields Focus State */
+.p-inputtext:focus,
+.p-inputtextarea:focus {
+    border-color: #ff1493;
+    box-shadow: 0 0 0 0.2rem rgba(255, 20, 147, 0.1);
+}
+
+/* Dropdown Focus State */
+.p-dropdown:focus {
+    border-color: #ff1493;
+    box-shadow: 0 0 0 0.2rem rgba(255, 20, 147, 0.1);
+}
+
+/* Tag/Status Styling */
+.p-tag {
+    &.p-tag-success {
+        background-color: #d4edda;
+        color: #155724;
+    }
+
+    &.p-tag-danger {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+}
+
+/* TabView Styling */
+.p-tabview {
+    .p-tabview-nav {
+        border-bottom: 2px solid #f0f0f0;
+
+        .p-tabview-nav-content {
+            .p-tabviewheader {
+                &.p-highlight {
+                    .p-tabviewheader-title {
+                        color: #ff1493;
+                        font-weight: 600;
+                    }
+
+                    .p-tabview-title::after {
+                        background-color: #ff1493;
+                    }
+                }
+            }
+        }
+    }
+
+    .p-tabview-panels {
+        background: transparent;
+    }
+}
+
+/* Section Headers */
+.admin-section-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #ff1493;
+
+    i {
+        color: #ff1493;
+        font-size: 1.5rem;
+    }
+
+    h4 {
+        margin: 0;
+        color: #333;
+        font-weight: 600;
+    }
+}
+
+/* Success Message Styling */
+.p-toast-message {
+    &.p-toast-message-success {
+        .p-toast-message-content {
+            background-color: #d4edda;
+            color: #155724;
+
+            .p-toast-icon {
+                color: #28a745;
+            }
+        }
+    }
+
+    &.p-toast-message-error {
+        .p-toast-message-content {
+            background-color: #f8d7da;
+            color: #721c24;
+
+            .p-toast-icon {
+                color: #dc3545;
+            }
+        }
+    }
+}
+
+/* Loading State */
+.loading-spinner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+
+    .pi-spin {
+        animation: spin 1s linear infinite;
+    }
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}

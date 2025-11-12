@@ -9,7 +9,7 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
         inputStyle: 'outlined',
         menuMode: 'static',
         colorScheme: 'light',
-        theme: 'lara-light-indigo',
+        theme: 'lara-light-pink',
         scale: 14
     });
 
@@ -22,8 +22,8 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
         menuHoverActive: false
     });
 
-    // role can be 'admin', 'seller' or 'customer'. Load from localStorage if available.
-    const [role, setRole] = useState<'admin' | 'seller' | 'customer'>('customer');
+    // role can be 'admin' or 'customer'. Load from localStorage if available.
+    const [role, setRole] = useState<'admin' | 'customer'>('customer');
 
     // Load role from localStorage on mount
     useEffect(() => {
@@ -32,7 +32,7 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
             if (storedUser) {
                 try {
                     const user = JSON.parse(storedUser);
-                    if (user.role === 'admin' || user.role === 'seller' || user.role === 'customer') {
+                    if (user.role === 'admin' || user.role === 'customer') {
                         setRole(user.role);
                     }
                 } catch (error) {

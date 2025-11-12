@@ -4,8 +4,8 @@ import { Button } from 'primereact/button';
 import { DataView } from 'primereact/dataview';
 import { Dropdown } from 'primereact/dropdown';
 import { InputText } from 'primereact/inputtext';
-import { Rating } from 'primereact/rating';
 import { Tag } from 'primereact/tag';
+import { RadioButton } from 'primereact/radiobutton';
 import { Toast } from 'primereact/toast';
 import { Sidebar } from 'primereact/sidebar';
 import { Skeleton } from 'primereact/skeleton';
@@ -29,12 +29,9 @@ interface Product {
     category: number;
     category_name: string;
     price: number;
-    old_price: number | null;
     discount_percentage: number;
     stock: number;
     unit: string;
-    rating: number;
-    reviews_count: number;
     sold_count: number;
     description: string;
     main_image: string | null;
@@ -53,7 +50,9 @@ const ProductsPage = () => {
     const [sortKey, setSortKey] = useState<string>('');
     const [filterVisible, setFilterVisible] = useState(false);
     const [categoryVisible, setCategoryVisible] = useState(true);
-    const [cart, setCart] = useState<{ [key: number]: number }>({});
+    // cart keeps quantity and selected size per product id
+    const [cart, setCart] = useState<{ [key: number]: { qty: number; size: number } }>({});
+    const [selectedSizes, setSelectedSizes] = useState<{ [key: number]: number }>({});
     const [loading, setLoading] = useState(false);
     const [first, setFirst] = useState(0);
     const [rowsPerPage] = useState(12);
@@ -63,7 +62,6 @@ const ProductsPage = () => {
         { label: 'Mới nhất', value: 'newest' },
         { label: 'Giá: Thấp đến cao', value: 'price-asc' },
         { label: 'Giá: Cao đến thấp', value: 'price-desc' },
-        { label: 'Đánh giá cao nhất', value: 'rating' },
         { label: 'Bán chạy nhất', value: 'sold' },
         { label: 'Tên: A-Z', value: 'name' }
     ];
@@ -112,11 +110,14 @@ const ProductsPage = () => {
     };
 
     // Filter và sort products khi các điều kiện thay đổi
+    // Keep dependencies minimal on purpose; filterAndSortProducts is stable in this component
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         filterAndSortProducts();
     }, [selectedCategory, searchTerm, sortKey, allProducts]);
 
     // Cập nhật displayed products khi filteredProducts hoặc pagination thay đổi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         updateDisplayedProducts();
     }, [filteredProducts, first, rowsPerPage]);
@@ -143,8 +144,6 @@ const ProductsPage = () => {
                         return a.price - b.price;
                     case 'price-desc':
                         return b.price - a.price;
-                    case 'rating':
-                        return b.rating - a.rating;
                     case 'sold':
                         return b.sold_count - a.sold_count;
                     case 'name':
@@ -168,16 +167,33 @@ const ProductsPage = () => {
     };
 
     const addToCart = (product: Product) => {
+        const size = selectedSizes[product.id] ?? 30;
         setCart((prev) => ({
             ...prev,
-            [product.id]: (prev[product.id] || 0) + 1
+            [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size }
         }));
         toast.current?.show({
             severity: 'success',
             summary: 'Đã thêm vào giỏ',
-            detail: `${product.name} đã được thêm vào giỏ hàng`,
+            detail: `${product.name} (Size ${size}) đã được thêm vào giỏ hàng`,
             life: 3000
         });
+    };
+
+    const buyNow = (product: Product) => {
+        // Chuyển hướng đến trang thanh toán với sản phẩm này (gồm size)
+        const size = selectedSizes[product.id] ?? 30;
+        const item = {
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            quantity: 1,
+            unit: product.unit,
+            size: size,
+            image: product.main_image_url || product.main_image
+        };
+        sessionStorage.setItem('buyNowItem', JSON.stringify(item));
+        window.location.href = '/customer/checkout';
     };
 
     const onPageChange = (event: any) => {
@@ -186,14 +202,12 @@ const ProductsPage = () => {
 
     const itemTemplate = (product: Product) => {
         const imageUrl = product.main_image_url || product.main_image || '/demo/images/product/placeholder.png';
-        const hasDiscount = product.old_price && product.old_price > product.price;
 
         return (
             <div className="col-12 sm:col-6 lg:col-4 xl:col-3 p-2">
                 <div className="product-card p-4 border-1 surface-border surface-card border-round h-full hover:shadow-3 transition-all transition-duration-300">
                     <div className="flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
                         <Tag value={product.category_name} severity="info" className="text-sm"></Tag>
-                        {hasDiscount && <Tag value={`-${product.discount_percentage}%`} severity="danger" className="text-sm"></Tag>}
                         {!product.in_stock && <Tag value="Hết hàng" severity="warning" className="text-sm"></Tag>}
                     </div>
 
@@ -210,32 +224,48 @@ const ProductsPage = () => {
                         </div>
 
                         <div className="flex align-items-center gap-2 mb-3">
-                            <Rating value={product.rating} readOnly cancel={false} className="text-sm" />
-                            <span className="text-sm text-600">({product.reviews_count})</span>
-                            <span className="text-sm text-500">• Đã bán: {product.sold_count}</span>
+                            <span className="text-sm text-500">Đã bán: {product.sold_count}</span>
                         </div>
 
-                        <div className="flex align-items-end justify-content-between mb-3">
+                        <div className="flex flex-column md:flex-row align-items-end justify-content-between mb-3">
                             <div>
-                                {hasDiscount && <div className="text-sm text-500 line-through mb-1">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.old_price!)}</div>}
                                 <div className="text-2xl font-bold text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}</div>
                             </div>
-                            <div className="text-sm text-600">
-                                Còn:{' '}
-                                <span className={classNames('font-semibold', { 'text-900': product.stock > 50, 'text-orange-500': product.stock <= 50 && product.stock > 0, 'text-red-500': product.stock === 0 })}>
-                                    {product.stock} {product.unit}
-                                </span>
+                            <div className="text-sm text-600 mt-2 md:mt-0">
+                                <div className="mb-1">Chọn size:</div>
+                                <div className="flex gap-3">
+                                    {[30, 60, 90].map((s) => (
+                                        <label key={s} className="flex align-items-center gap-2">
+                                            <RadioButton
+                                                inputId={`size-${product.id}-${s}`}
+                                                name={`size-${product.id}`}
+                                                value={s}
+                                                onChange={(e) => setSelectedSizes((prev) => ({ ...prev, [product.id]: Number(e.value) }))}
+                                                checked={(selectedSizes[product.id] ?? 30) === s}
+                                            />
+                                            <span className="text-sm">{s} cm</span>
+                                        </label>
+                                    ))}
+                                </div>
                             </div>
                         </div>
 
                         <div className="flex gap-2">
                             <Button label="Chi tiết" icon="pi pi-eye" className="flex-1 p-button-outlined" onClick={() => (window.location.href = `/customer/products/${product.slug}`)} />
+                            <Button 
+                                label="Mua Ngay" 
+                                icon="pi pi-flash" 
+                                className="flex-1"
+                                disabled={!product.in_stock}
+                                onClick={() => buyNow(product)}
+                                style={{ backgroundColor: '#ff1493', borderColor: '#ff1493', color: 'white' }}
+                            />
                             <Button icon="pi pi-shopping-cart" className="p-button-rounded" disabled={!product.in_stock} onClick={() => addToCart(product)} tooltip="Thêm vào giỏ" tooltipOptions={{ position: 'top' }} />
                         </div>
 
                         {cart[product.id] && (
                             <div className="mt-2 text-center">
-                                <Tag value={`Trong giỏ: ${cart[product.id]}`} severity="success" className="w-full"></Tag>
+                                <Tag value={`Trong giỏ: ${cart[product.id].qty} (Size ${cart[product.id].size})`} severity="success" className="w-full"></Tag>
                             </div>
                         )}
                     </div>
@@ -279,7 +309,7 @@ const ProductsPage = () => {
         );
     };
 
-    const totalCartItems = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+    const totalCartItems = Object.values(cart).reduce((sum, item) => sum + (item.qty || 0), 0);
 
     return (
         <div className="grid">
@@ -290,7 +320,7 @@ const ProductsPage = () => {
                 <h3 className="mb-4">Danh mục sản phẩm</h3>
                 <div className="flex flex-column gap-2">
                     <Button
-                        label="Tất cả sản phẩm"
+                        label="Sản phẩm của Gấu Bông"
                         icon={selectedCategory === null ? 'pi pi-check' : undefined}
                         className={classNames('justify-content-start', {
                             'p-button-outlined': selectedCategory === null,
@@ -322,7 +352,7 @@ const ProductsPage = () => {
             </Sidebar>
 
             {/* Category Filter for Desktop */}
-            {categoryVisible && (
+            {false && categoryVisible && (
                 <div className="col-12 md:col-3 hidden md:block">
                     <div className="card sticky" style={{ top: '6rem' }}>
                         <div className="flex justify-content-between align-items-center mb-4">
@@ -363,11 +393,11 @@ const ProductsPage = () => {
             )}
 
             {/* Products Grid */}
-            <div className={categoryVisible ? 'col-12 md:col-9' : 'col-12'}>
+            <div className="col-12">
                 <div className="card">
                     {!categoryVisible && (
                         <div className="mb-3 flex justify-content-between align-items-center">
-                            <Button label="Hiển thị danh mục" icon="pi pi-list" outlined className="hidden md:inline-flex" onClick={() => setCategoryVisible(true)} />
+                            <div></div>
                             {totalCartItems > 0 && <Button label={`Giỏ hàng (${totalCartItems})`} icon="pi pi-shopping-cart" severity="success" onClick={() => (window.location.href = '/customer/cart')} />}
                         </div>
                     )}
