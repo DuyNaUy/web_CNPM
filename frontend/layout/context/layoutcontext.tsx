@@ -24,6 +24,9 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
 
     // role can be 'admin' or 'customer'. Load from localStorage if available.
     const [role, setRole] = useState<'admin' | 'customer'>('customer');
+    
+    // Cart count state for real-time topbar updates
+    const [cartCount, setCartCount] = useState(0);
 
     // Load role from localStorage on mount
     useEffect(() => {
@@ -74,7 +77,9 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
         onMenuToggle,
         showProfileSidebar,
         role,
-        setRole
+        setRole,
+        cartCount,
+        setCartCount
     };
 
     return <LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>;

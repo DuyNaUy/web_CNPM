@@ -53,6 +53,53 @@ class Order(models.Model):
         return f"{self.order_code} - {self.full_name}"
 
 
+class Cart(models.Model):
+    """Giỏ hàng của khách hàng"""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='cart')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = 'Giỏ hàng'
+        verbose_name_plural = 'Giỏ hàng'
+    
+    def __str__(self):
+        return f"Cart of {self.user.username}"
+    
+    @property
+    def total_price(self):
+        """Tính tổng giá trị giỏ hàng"""
+        return sum(item.total_price for item in self.items.all())
+    
+    @property
+    def total_quantity(self):
+        """Tính tổng số lượng sản phẩm"""
+        return sum(item.quantity for item in self.items.all())
+
+
+class CartItem(models.Model):
+    """Mục trong giỏ hàng"""
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='items')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(default=1)
+    unit = models.CharField(max_length=50, blank=True)  # Size/unit sản phẩm (30cm, 60cm, 90cm, v.v.)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('cart', 'product', 'unit')
+        verbose_name = 'Mục giỏ hàng'
+        verbose_name_plural = 'Mục giỏ hàng'
+    
+    def __str__(self):
+        return f"{self.product.name} ({self.unit}) x {self.quantity}"
+    
+    @property
+    def total_price(self):
+        """Tính tổng giá cho mục này"""
+        return self.product.price * self.quantity
+
+
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True)

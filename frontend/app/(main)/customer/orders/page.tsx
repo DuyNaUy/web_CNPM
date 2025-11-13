@@ -9,141 +9,62 @@ import { Toast } from 'primereact/toast';
 import { Timeline } from 'primereact/timeline';
 import { Card } from 'primereact/card';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
+import { orderAPI } from '@/services/api';
 
 interface OrderItem {
-    productId: number;
-    name: string;
-    price: number;
+    product_name: string;
+    product_price: number;
     quantity: number;
-    image: string;
+    unit: string;
 }
 
 interface Order {
     id: number;
-    orderNumber: string;
-    date: string;
-    status: 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled' | 'returned';
-    total: number;
+    order_code: string;
+    created_at: string;
+    status: 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled';
+    total_amount: number;
     items: OrderItem[];
-    shippingAddress: string;
-    paymentMethod: string;
-    trackingEvents?: {
-        status: string;
-        date: string;
-        description: string;
-    }[];
+    address: string;
+    payment_method: string;
+    full_name: string;
+    phone: string;
+    email: string;
 }
 
 const OrdersPage = () => {
-    const [orders, setOrders] = useState<Order[]>([
-        {
-            id: 1,
-            orderNumber: 'DH001234',
-            date: '2024-11-05',
-            status: 'delivered',
-            total: 415000,
-            paymentMethod: 'COD',
-            shippingAddress: '123 Nguyễn Văn Linh, Q.7, TP.HCM',
-            items: [
-                {
-                    productId: 1,
-                    name: 'Cải Thảo Hữu Cơ',
-                    price: 25000,
-                    quantity: 2,
-                    image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?w=300'
-                },
-                {
-                    productId: 4,
-                    name: 'Trứng Gà Organic',
-                    price: 65000,
-                    quantity: 1,
-                    image: 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=300'
-                }
-            ],
-            trackingEvents: [
-                { status: 'Đã đặt hàng', date: '2024-11-05 10:30', description: 'Đơn hàng đã được tiếp nhận' },
-                { status: 'Đã xác nhận', date: '2024-11-05 11:00', description: 'Đơn hàng đã được xác nhận' },
-                { status: 'Đang giao', date: '2024-11-05 14:00', description: 'Đơn hàng đang được giao đến bạn' },
-                { status: 'Đã giao', date: '2024-11-05 16:30', description: 'Đơn hàng đã được giao thành công' }
-            ]
-        },
-        {
-            id: 2,
-            orderNumber: 'DH001235',
-            date: '2024-11-06',
-            status: 'shipping',
-            total: 1200000,
-            paymentMethod: 'VNPay',
-            shippingAddress: '456 Lê Văn Việt, Q.9, TP.HCM',
-            items: [
-                {
-                    productId: 2,
-                    name: 'Thịt Bò Úc',
-                    price: 350000,
-                    quantity: 2,
-                    image: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=300'
-                },
-                {
-                    productId: 5,
-                    name: 'Gạo ST25',
-                    price: 120000,
-                    quantity: 1,
-                    image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300'
-                }
-            ],
-            trackingEvents: [
-                { status: 'Đã đặt hàng', date: '2024-11-06 09:15', description: 'Đơn hàng đã được tiếp nhận' },
-                { status: 'Đã xác nhận', date: '2024-11-06 09:45', description: 'Đơn hàng đã được xác nhận' },
-                { status: 'Đang giao', date: '2024-11-06 13:00', description: 'Đơn hàng đang được giao đến bạn' }
-            ]
-        },
-        {
-            id: 3,
-            orderNumber: 'DH001236',
-            date: '2024-11-07',
-            status: 'confirmed',
-            total: 560000,
-            paymentMethod: 'Momo',
-            shippingAddress: '789 Võ Văn Ngân, Thủ Đức, TP.HCM',
-            items: [
-                {
-                    productId: 3,
-                    name: 'Tôm Sú Sống',
-                    price: 280000,
-                    quantity: 2,
-                    image: 'https://images.unsplash.com/photo-1565680018434-b513d5e5fd47?w=300'
-                }
-            ],
-            trackingEvents: [
-                { status: 'Đã đặt hàng', date: '2024-11-07 08:20', description: 'Đơn hàng đã được tiếp nhận' },
-                { status: 'Đã xác nhận', date: '2024-11-07 08:50', description: 'Đơn hàng đã được xác nhận' }
-            ]
-        },
-        {
-            id: 4,
-            orderNumber: 'DH001237',
-            date: '2024-11-08',
-            status: 'pending',
-            total: 840000,
-            paymentMethod: 'COD',
-            shippingAddress: '321 Điện Biên Phủ, Q.3, TP.HCM',
-            items: [
-                {
-                    productId: 8,
-                    name: 'Cá Hồi Na Uy',
-                    price: 420000,
-                    quantity: 2,
-                    image: 'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=300'
-                }
-            ],
-            trackingEvents: [{ status: 'Đã đặt hàng', date: '2024-11-08 10:00', description: 'Đơn hàng đã được tiếp nhận' }]
-        }
-    ]);
+    const [orders, setOrders] = useState<Order[]>([]);
+    const [loading, setLoading] = useState(true);
 
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [detailDialog, setDetailDialog] = useState(false);
     const toast = useRef<Toast>(null);
+
+    // Load orders on mount
+    useEffect(() => {
+        loadOrders();
+    }, []);
+
+    const loadOrders = async () => {
+        setLoading(true);
+        try {
+            const response = await orderAPI.getMyOrders();
+            if (response && Array.isArray(response)) {
+                setOrders(response);
+            }
+        } catch (error) {
+            console.error('Error loading orders:', error);
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Lỗi',
+                detail: 'Không thể tải đơn hàng',
+                life: 3000
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const statusMap: { [key: string]: { label: string; severity: any } } = {
         pending: { label: 'Chờ xác nhận', severity: 'warning' },
@@ -160,7 +81,7 @@ const OrdersPage = () => {
     };
 
     const totalBodyTemplate = (rowData: Order) => {
-        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rowData.total);
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rowData.total_amount);
     };
 
     const actionBodyTemplate = (rowData: Order) => {
@@ -224,18 +145,6 @@ const OrdersPage = () => {
         );
     };
 
-    const customizedContent = (item: any) => {
-        return (
-            <Card className="mt-3 mb-3">
-                <div className="flex flex-column">
-                    <div className="font-bold text-lg mb-2">{item.status}</div>
-                    <div className="text-600 mb-1">{item.date}</div>
-                    <div className="text-700">{item.description}</div>
-                </div>
-            </Card>
-        );
-    };
-
     return (
         <div className="grid">
             <Toast ref={toast} />
@@ -245,11 +154,11 @@ const OrdersPage = () => {
                 <div className="card">
                     <h5>Đơn Hàng Của Tôi</h5>
 
-                    <DataTable value={orders} paginator rows={10} dataKey="id" emptyMessage="Bạn chưa có đơn hàng nào">
-                        <Column field="orderNumber" header="Mã đơn hàng" sortable />
-                        <Column field="date" header="Ngày đặt" sortable />
+                    <DataTable value={orders} paginator rows={10} dataKey="id" loading={loading} emptyMessage="Bạn chưa có đơn hàng nào">
+                        <Column field="order_code" header="Mã đơn hàng" sortable />
+                        <Column field="created_at" header="Ngày đặt" sortable body={(rowData) => new Date(rowData.created_at).toLocaleDateString('vi-VN')} />
                         <Column header="Trạng thái" body={statusBodyTemplate} sortable field="status" />
-                        <Column field="paymentMethod" header="Thanh toán" />
+                        <Column field="payment_method" header="Thanh toán" />
                         <Column header="Tổng tiền" body={totalBodyTemplate} sortable />
                         <Column body={actionBodyTemplate} exportable={false} style={{ minWidth: '150px' }} />
                     </DataTable>
@@ -257,7 +166,7 @@ const OrdersPage = () => {
             </div>
 
             {/* Order Detail Dialog */}
-            <Dialog visible={detailDialog} style={{ width: '900px' }} header={`Chi tiết đơn hàng ${selectedOrder?.orderNumber}`} modal className="p-fluid" onHide={() => setDetailDialog(false)} maximizable>
+            <Dialog visible={detailDialog} style={{ width: '900px' }} header={`Chi tiết đơn hàng ${selectedOrder?.order_code}`} modal className="p-fluid" onHide={() => setDetailDialog(false)} maximizable>
                 {selectedOrder && (
                     <div className="grid">
                         <div className="col-12 md:col-6">
@@ -265,11 +174,11 @@ const OrdersPage = () => {
                                 <h6 className="mt-0 mb-3">Thông tin đơn hàng</h6>
                                 <div className="mb-2">
                                     <span className="text-600">Mã đơn hàng:</span>
-                                    <span className="ml-2 font-bold">{selectedOrder.orderNumber}</span>
+                                    <span className="ml-2 font-bold">{selectedOrder.order_code}</span>
                                 </div>
                                 <div className="mb-2">
                                     <span className="text-600">Ngày đặt:</span>
-                                    <span className="ml-2">{selectedOrder.date}</span>
+                                    <span className="ml-2">{new Date(selectedOrder.created_at).toLocaleString('vi-VN')}</span>
                                 </div>
                                 <div className="mb-2">
                                     <span className="text-600">Trạng thái:</span>
@@ -277,11 +186,19 @@ const OrdersPage = () => {
                                 </div>
                                 <div className="mb-2">
                                     <span className="text-600">Phương thức thanh toán:</span>
-                                    <span className="ml-2">{selectedOrder.paymentMethod}</span>
+                                    <span className="ml-2">{selectedOrder.payment_method}</span>
                                 </div>
                                 <div className="mb-2">
                                     <span className="text-600">Địa chỉ giao hàng:</span>
-                                    <span className="ml-2">{selectedOrder.shippingAddress}</span>
+                                    <span className="ml-2">{selectedOrder.address}</span>
+                                </div>
+                                <div className="mb-2">
+                                    <span className="text-600">Người nhận:</span>
+                                    <span className="ml-2">{selectedOrder.full_name}</span>
+                                </div>
+                                <div className="mb-2">
+                                    <span className="text-600">Số điện thoại:</span>
+                                    <span className="ml-2">{selectedOrder.phone}</span>
                                 </div>
                             </div>
 
@@ -289,30 +206,35 @@ const OrdersPage = () => {
                                 <h6 className="mt-0 mb-3">Sản phẩm</h6>
                                 {selectedOrder.items.map((item, index) => (
                                     <div key={index} className="flex align-items-center mb-3 pb-3 border-bottom-1 surface-border">
-                                        <img src={item.image} alt={item.name} className="w-4rem h-4rem border-round mr-3" style={{ objectFit: 'cover' }} />
                                         <div className="flex-1">
-                                            <div className="font-bold">{item.name}</div>
+                                            <div className="font-bold">{item.product_name}</div>
+                                            <div className="text-600">Size: {item.unit}</div>
                                             <div className="text-600">
-                                                {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.price)} x {item.quantity}
+                                                {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.product_price)} x {item.quantity}
                                             </div>
                                         </div>
-                                        <div className="font-bold">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.price * item.quantity)}</div>
+                                        <div className="font-bold">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(item.product_price * item.quantity)}</div>
                                     </div>
                                 ))}
                                 <div className="flex justify-content-between mt-3 pt-3 border-top-1 surface-border">
                                     <span className="font-bold text-xl">Tổng cộng:</span>
-                                    <span className="font-bold text-xl text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(selectedOrder.total)}</span>
+                                    <span className="font-bold text-xl text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(selectedOrder.total_amount)}</span>
                                 </div>
                             </div>
                         </div>
 
                         <div className="col-12 md:col-6">
                             <div className="surface-100 p-3 border-round">
-                                <h6 className="mt-0 mb-3">Lịch sử theo dõi</h6>
-                                {selectedOrder.trackingEvents && selectedOrder.trackingEvents.length > 0 ? (
-                                    <Timeline value={selectedOrder.trackingEvents} content={customizedContent} marker={customizedMarker} />
-                                ) : (
-                                    <p className="text-600">Chưa có thông tin theo dõi</p>
+                                <h6 className="mt-0 mb-3">Trạng thái đơn hàng</h6>
+                                <div className="mb-3">
+                                    <p className="text-600 mb-2">Trạng thái hiện tại: <strong>{statusMap[selectedOrder.status].label}</strong></p>
+                                    <p className="text-500 text-sm">Vui lòng chờ cửa hàng xác nhận đơn hàng của bạn.</p>
+                                </div>
+                                {selectedOrder.status === 'pending' && (
+                                    <div className="bg-yellow-50 p-3 border-round border-1 border-yellow-200">
+                                        <i className="pi pi-info-circle text-yellow-600 mr-2"></i>
+                                        <span className="text-yellow-600 text-sm">Đơn hàng đang chờ xác nhận từ cửa hàng</span>
+                                    </div>
                                 )}
                             </div>
                         </div>

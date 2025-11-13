@@ -1,10 +1,29 @@
 from django.contrib import admin
-from .models import Order, OrderItem
+from .models import Order, OrderItem, Cart, CartItem
 
 
 class OrderItemInline(admin.TabularInline):
     model = OrderItem
     extra = 0
+
+
+class CartItemInline(admin.TabularInline):
+    model = CartItem
+    extra = 0
+
+
+@admin.register(Cart)
+class CartAdmin(admin.ModelAdmin):
+    inlines = [CartItemInline]
+    list_display = ['user', 'total_quantity', 'total_price']
+    search_fields = ['user__username', 'user__email']
+
+
+@admin.register(CartItem)
+class CartItemAdmin(admin.ModelAdmin):
+    list_display = ['cart', 'product', 'quantity', 'unit']
+    list_filter = ['cart__user']
+    search_fields = ['product__name', 'cart__user__username']
 
 
 @admin.register(Order)

@@ -13,10 +13,10 @@ import { Button } from 'primereact/button';
 import { Toast } from 'primereact/toast';
 import { Avatar } from 'primereact/avatar';
 import { Dropdown } from 'primereact/dropdown';
-import { authAPI, getStoredUser, removeAuthTokens, categoryAPI } from '../services/api';
+import { authAPI, getStoredUser, removeAuthTokens, categoryAPI, cartAPI } from '../services/api';
 
 const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
-    const { layoutConfig, layoutState, onMenuToggle, showProfileSidebar, role, setRole } = useContext(LayoutContext);
+    const { layoutConfig, layoutState, onMenuToggle, showProfileSidebar, role, setRole, cartCount, setCartCount } = useContext(LayoutContext);
     const router = useRouter();
     const menubuttonRef = useRef(null);
     const topbarmenuRef = useRef(null);
@@ -52,8 +52,20 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
     useEffect(() => {
         if (role === 'customer') {
             loadCategories();
+            loadCartCount();
         }
     }, [role]);
+
+    const loadCartCount = async () => {
+        try {
+            const response = await cartAPI.getCart();
+            if (response && response.total_quantity) {
+                setCartCount(response.total_quantity);
+            }
+        } catch (error) {
+            console.error('Error loading cart count:', error);
+        }
+    };
 
     const loadCategories = async () => {
         try {
@@ -167,7 +179,7 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                                 value={selectedCategory}
                                 onChange={(e) => handleCategoryChange(e.value)}
                                 options={[
-                                    { label: 'Sản phẩm của Gấu Bông', value: null },
+                                    { label: 'Tất cả sản phẩm', value: null },
                                     ...categories.map((cat) => ({
                                         label: cat.name,
                                         value: cat.id
@@ -188,7 +200,7 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                         </Link>
                         <Link href="/customer/cart" className="p-link layout-topbar-button p-overlay-badge">
                             <i className="pi pi-shopping-cart"></i>
-                            <Badge value="3" severity="danger"></Badge>
+                            {cartCount > 0 && <Badge value={cartCount} severity="danger"></Badge>}
                             <span className="hidden md:inline-block ml-2">Giỏ Hàng</span>
                         </Link>
                         <Link href="/customer/orders" className="p-link layout-topbar-button">

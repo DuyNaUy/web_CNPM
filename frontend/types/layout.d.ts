@@ -48,6 +48,9 @@ export interface LayoutContextProps {
     /** role of current user view - 'admin' or 'customer' */
     role: 'admin' | 'customer';
     setRole: Dispatch<SetStateAction<'admin' | 'customer'>>;
+    /** Cart item count for topbar badge - synced across pages */
+    cartCount: number;
+    setCartCount: Dispatch<SetStateAction<number>>;
 }
 
 export interface MenuContextProps {

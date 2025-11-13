@@ -10,9 +10,11 @@ import { Toast } from 'primereact/toast';
 import { Sidebar } from 'primereact/sidebar';
 import { Skeleton } from 'primereact/skeleton';
 import { Paginator } from 'primereact/paginator';
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useContext } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { classNames } from 'primereact/utils';
-import { productAPI, categoryAPI } from '@/services/api';
+import { productAPI, categoryAPI, cartAPI } from '@/services/api';
+import { LayoutContext } from '@/layout/context/layoutcontext';
 
 interface Category {
     id: number;
@@ -41,6 +43,9 @@ interface Product {
 }
 
 const ProductsPage = () => {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const { setCartCount } = useContext(LayoutContext);
     const [allProducts, setAllProducts] = useState<Product[]>([]); // Lưu tất cả sản phẩm
     const [filteredProducts, setFilteredProducts] = useState<Product[]>([]); // Sản phẩm sau khi filter
     const [displayedProducts, setDisplayedProducts] = useState<Product[]>([]); // Sản phẩm hiển thị trên trang hiện tại
@@ -69,7 +74,13 @@ const ProductsPage = () => {
     // Load tất cả dữ liệu một lần khi component mount
     useEffect(() => {
         loadAllData();
-    }, []);
+        
+        // Kiểm tra URL query params để lấy category
+        const categoryParam = searchParams.get('category');
+        if (categoryParam) {
+            setSelectedCategory(parseInt(categoryParam, 10));
+        }
+    }, [searchParams]);
 
     // Load categories và products
     const loadAllData = async () => {
@@ -166,18 +177,35 @@ const ProductsPage = () => {
         setDisplayedProducts(filteredProducts.slice(startIndex, endIndex));
     };
 
-    const addToCart = (product: Product) => {
+    const addToCart = async (product: Product) => {
         const size = selectedSizes[product.id] ?? 30;
-        setCart((prev) => ({
-            ...prev,
-            [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size }
-        }));
-        toast.current?.show({
-            severity: 'success',
-            summary: 'Đã thêm vào giỏ',
-            detail: `${product.name} (Size ${size}) đã được thêm vào giỏ hàng`,
-            life: 3000
-        });
+        try {
+            const response = await cartAPI.addItem(product.id, 1, `${size}cm`);
+            if (response && response.items) {
+                // Update local cart state
+                setCart((prev) => ({
+                    ...prev,
+                    [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size }
+                }));
+                // Update topbar cart count via context
+                if (response.total_quantity) {
+                    setCartCount(response.total_quantity);
+                }
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Đã thêm vào giỏ',
+                    detail: `${product.name} (Size ${size}) đã được thêm vào giỏ hàng`,
+                    life: 3000
+                });
+            }
+        } catch (error) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Lỗi',
+                detail: 'Không thể thêm sản phẩm vào giỏ hàng',
+                life: 3000
+            });
+        }
     };
 
     const buyNow = (product: Product) => {
@@ -204,7 +232,7 @@ const ProductsPage = () => {
         const imageUrl = product.main_image_url || product.main_image || '/demo/images/product/placeholder.png';
 
         return (
-            <div className="col-12 sm:col-6 lg:col-4 xl:col-3 p-2">
+            <div className="col-12 sm:col-6 lg:col-4 xl:col-4 p-2">
                 <div className="product-card p-4 border-1 surface-border surface-card border-round h-full hover:shadow-3 transition-all transition-duration-300">
                     <div className="flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
                         <Tag value={product.category_name} severity="info" className="text-sm"></Tag>
@@ -216,22 +244,21 @@ const ProductsPage = () => {
                     </div>
 
                     <div className="product-info">
-                        <div className="text-xl font-bold text-900 mb-2" style={{ minHeight: '2.5rem' }}>
+                        <div className="text-2xl font-bold text-900 mb-2" style={{ minHeight: '2.5rem' }}>
                             {product.name}
                         </div>
-                        <div className="text-sm text-600 mb-3 line-height-3" style={{ minHeight: '3rem' }}>
-                            {product.description.length > 60 ? product.description.substring(0, 60) + '...' : product.description}
+                        <div className="text-lg text-600 mb-3 line-height-3" style={{ minHeight: '3rem' }}>
+                            {product.description.length > 120 ? product.description.substring(0, 120) + '...' : product.description}
                         </div>
 
-                        <div className="flex align-items-center gap-2 mb-3">
-                            <span className="text-sm text-500">Đã bán: {product.sold_count}</span>
-                        </div>
+                        {/* sold count moved to be inline with price */}
 
-                        <div className="flex flex-column md:flex-row align-items-end justify-content-between mb-3">
-                            <div>
-                                <div className="text-2xl font-bold text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}</div>
+                        <div className="flex flex-column gap-3 mb-3">
+                            <div className="text-sm text-600">
+                                <span className="font-semibold">Số lượng: </span>
+                                <span>{product.stock}</span>
                             </div>
-                            <div className="text-sm text-600 mt-2 md:mt-0">
+                            <div className="text-sm text-600">
                                 <div className="mb-1">Chọn size:</div>
                                 <div className="flex gap-3">
                                     {[30, 60, 90].map((s) => (
@@ -248,10 +275,14 @@ const ProductsPage = () => {
                                     ))}
                                 </div>
                             </div>
+                            <div className="flex align-items-baseline gap-3">
+                                <div className="text-2xl font-bold text-primary">{new Intl.NumberFormat('vi-VN').format(product.price)} VND</div>
+                                <div className="text-sm text-500">Đã bán: <span className="font-semibold text-900">{product.sold_count}</span></div>
+                            </div>
                         </div>
 
-                        <div className="flex gap-2">
-                            <Button label="Chi tiết" icon="pi pi-eye" className="flex-1 p-button-outlined" onClick={() => (window.location.href = `/customer/products/${product.slug}`)} />
+                            <div className="flex gap-2">
+                            <Button label="Chi tiết" icon="pi pi-eye" className="flex-1 p-button-outlined" onClick={() => router.push(`/customer/products/${product.id}`)} />
                             <Button 
                                 label="Mua Ngay" 
                                 icon="pi pi-flash" 
@@ -276,7 +307,7 @@ const ProductsPage = () => {
 
     const skeletonTemplate = () => {
         return (
-            <div className="col-12 sm:col-6 lg:col-4 xl:col-3 p-2">
+            <div className="col-12 sm:col-6 lg:col-4 xl:col-4 p-2">
                 <div className="product-card p-4 border-1 surface-border surface-card border-round h-full">
                     <div className="mb-3">
                         <Skeleton width="100%" height="220px" />
@@ -320,7 +351,7 @@ const ProductsPage = () => {
                 <h3 className="mb-4">Danh mục sản phẩm</h3>
                 <div className="flex flex-column gap-2">
                     <Button
-                        label="Sản phẩm của Gấu Bông"
+                        label="Tất cả sản phẩm"
                         icon={selectedCategory === null ? 'pi pi-check' : undefined}
                         className={classNames('justify-content-start', {
                             'p-button-outlined': selectedCategory === null,

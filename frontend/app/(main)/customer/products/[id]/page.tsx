@@ -80,26 +80,7 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
         );
     }
 
-    const relatedProducts = [
-        {
-            id: 6,
-            name: 'Cà Chua Bi',
-            price: 35000,
-            image: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=300'
-        },
-        {
-            id: 2,
-            name: 'Thịt Bò Úc',
-            price: 350000,
-            image: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=300'
-        },
-        {
-            id: 4,
-            name: 'Trứng Gà Organic',
-            price: 65000,
-            image: 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?w=300'
-        }
-    ];
+    // Related products removed per request
 
     const itemTemplate = (item: string) => {
         return <img src={item} alt="Product" style={{ width: '100%', display: 'block' }} />;
@@ -160,22 +141,24 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
 
                             <h1 className="text-4xl font-bold text-900 mb-3">{product.name}</h1>
 
-                            <div className="flex align-items-center gap-3 mb-4">
-                                <span className="text-600">
-                                    Đã bán: <span className="font-semibold text-900">{product.sold_count ?? 0}</span>
-                                </span>
-                            </div>
+                            {/* sold count will be shown inline with price */}
 
                             <div className="surface-100 p-4 border-round mb-4">
                                 <div className="flex align-items-baseline gap-3 mb-2">
                                     {product.oldPrice && (
                                         <>
-                                            <span className="text-3xl font-bold text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}</span>
-                                            <span className="text-xl text-500 line-through">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.oldPrice)}</span>
+                                            <span className="text-3xl font-bold text-primary">{new Intl.NumberFormat('vi-VN').format(product.price)} VND</span>
+                                            <span className="text-xl text-500 line-through">{new Intl.NumberFormat('vi-VN').format(product.oldPrice)} VND</span>
                                             <Tag value={`-${Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)}%`} severity="danger" className="text-sm" />
+                                            <span className="text-sm text-500">Đã bán: <span className="font-semibold text-900">{product.sold_count ?? 0}</span></span>
                                         </>
                                     )}
-                                    {!product.oldPrice && <span className="text-3xl font-bold text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}</span>}
+                                    {!product.oldPrice && (
+                                        <>
+                                            <span className="text-3xl font-bold text-primary">{new Intl.NumberFormat('vi-VN').format(product.price)} VND</span>
+                                            <span className="text-sm text-500">Đã bán: <span className="font-semibold text-900">{product.sold_count ?? 0}</span></span>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="text-sm text-600">
                                     Tình trạng: <span className="font-semibold text-900">Còn {product.stock} sản phẩm</span>
@@ -235,7 +218,7 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                 <div className="card">
                     <TabView>
                         <TabPanel header="Mô tả chi tiết">
-                            <div className="text-600 line-height-3" dangerouslySetInnerHTML={{ __html: product.detailDescription }} />
+                            <div className="text-900 text-lg line-height-3" style={{ fontSize: '1.05rem' }} dangerouslySetInnerHTML={{ __html: product.detailDescription }} />
                         </TabPanel>
 
                         {/* Technical specs removed per UX request */}
@@ -243,25 +226,7 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                 </div>
             </div>
 
-            {/* Related Products */}
-            <div className="col-12">
-                <div className="card">
-                    <h3 className="text-2xl font-bold text-900 mb-4">Sản phẩm liên quan</h3>
-                    <div className="grid">
-                        {relatedProducts.map((relProduct) => (
-                            <div key={relProduct.id} className="col-12 sm:col-6 md:col-4 lg:col-3">
-                                <div className="product-card p-3 border-1 surface-border border-round cursor-pointer hover:shadow-3 transition-duration-300">
-                                    <img src={relProduct.image} alt={relProduct.name} className="w-full border-round mb-3" style={{ height: '180px', objectFit: 'cover' }} onClick={() => router.push(`/customer/products/${relProduct.id}`)} />
-                                    <div className="text-lg font-semibold text-900 mb-2">{relProduct.name}</div>
-                                    <div className="flex align-items-center justify-content-between">
-                                        <span className="text-xl font-bold text-primary">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(relProduct.price)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
+            {/* Related products section removed */}
         </div>
     );
 };

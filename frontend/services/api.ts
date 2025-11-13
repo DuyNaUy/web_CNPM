@@ -446,8 +446,58 @@ export const orderAPI = {
         return await apiRequest('/orders/all_orders/');
     },
 
+    updateOrderStatus: async (order_id: number, status: string) => {
+        return await apiRequest('/orders/update_order_status/', {
+            method: 'POST',
+            body: JSON.stringify({ order_id, status })
+        });
+    },
+
     getStats: async () => {
         return await apiRequest('/orders/stats/');
+    }
+};
+
+// Cart API
+export const cartAPI = {
+    getCart: async () => {
+        return await apiRequest('/orders/cart/my_cart/');
+    },
+
+    addItem: async (product_id: number, quantity: number, unit: string) => {
+        return await apiRequest('/orders/cart/add_item/', {
+            method: 'POST',
+            body: JSON.stringify({
+                product_id,
+                quantity,
+                unit
+            })
+        });
+    },
+
+    updateItem: async (item_id: number, quantity: number) => {
+        return await apiRequest('/orders/cart/update_item/', {
+            method: 'POST',
+            body: JSON.stringify({
+                item_id,
+                quantity
+            })
+        });
+    },
+
+    removeItem: async (item_id: number) => {
+        return await apiRequest('/orders/cart/remove_item/', {
+            method: 'POST',
+            body: JSON.stringify({
+                item_id
+            })
+        });
+    },
+
+    clearCart: async () => {
+        return await apiRequest('/orders/cart/clear_cart/', {
+            method: 'POST'
+        });
     }
 };
 

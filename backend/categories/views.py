@@ -1,14 +1,17 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, BasePermission
 from django.db.models import Q
 from django.db import IntegrityError
 from .models import Category
 from .serializers import CategorySerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-class IsAdminUser:
+class IsAdminUser(BasePermission):
     """Custom permission to check if user is admin"""
     def has_permission(self, request, view):
         return bool(
@@ -36,7 +39,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         """
         if self.action in ['list', 'retrieve', 'active']:
             permission_classes = [AllowAny]
-        elif self.action in ['create', 'update', 'partial_update', 'destroy', 'toggle_status']:
+        elif self.action in ['create', 'update', 'partial_update', 'destroy', 'toggle_status', 'delete_category']:
             permission_classes = [IsAuthenticated, IsAdminUser]
         else:
             permission_classes = [IsAuthenticated]
@@ -96,49 +99,77 @@ class CategoryViewSet(viewsets.ModelViewSet):
         })
     
     def destroy(self, request, *args, **kwargs):
-        """Xóa danh mục"""
+        """Xóa danh mục
+
+        Hỗ trợ tuỳ chọn trong body: reassign_to (id) hoặc force (true).
+        """
         # Kiểm tra quyền admin
         if not (request.user.is_staff or getattr(request.user, 'role', None) == 'admin'):
             return Response(
                 {'error': 'Bạn không có quyền xóa danh mục'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
-        instance = self.get_object()
-        
-        # Kiểm tra xem danh mục có sản phẩm không
-        if hasattr(instance, 'products') and instance.products.exists():
-            product_count = instance.products.count()
-            return Response(
-                {
-                    'error': f'Không thể xóa danh mục này vì đang chứa {product_count} sản phẩm. Vui lòng xóa hoặc chuyển sản phẩm sang danh mục khác trước.'
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+
         try:
-            category_name = instance.name
-            self.perform_destroy(instance)
-            return Response(
-                {
-                    'message': f'Xóa danh mục "{category_name}" thành công',
-                    'data': {
-                        'id': instance.id,
-                        'name': category_name
-                    }
-                },
-                status=status.HTTP_200_OK
-            )
-        except IntegrityError as e:
-            return Response(
-                {'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            instance = self.get_object()
+
+            reassign_to = request.data.get('reassign_to')
+            force = request.data.get('force', False)
+
+            # Nếu có sản phẩm trong danh mục
+            if hasattr(instance, 'products') and instance.products.exists():
+                product_count = instance.products.count()
+
+                # Reassign to another category
+                if reassign_to:
+                    try:
+                        new_cat = Category.objects.get(pk=int(reassign_to))
+                    except Category.DoesNotExist:
+                        return Response({'error': 'Danh mục để chuyển không tồn tại.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    if new_cat.id == instance.id:
+                        return Response({'error': 'Không thể chuyển sản phẩm sang cùng một danh mục.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    try:
+                        from products.models import Product
+                    except Exception:
+                        logger.exception('Products app import failed')
+                        return Response({'error': 'Products app không khả dụng.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                    Product.objects.filter(category_id=instance.id).update(category=new_cat)
+                    try:
+                        category_name = instance.name
+                        category_id = instance.id
+                        instance.delete()
+                        return Response({'message': f'Chuyển {product_count} sản phẩm sang danh mục "{new_cat.name}" và xóa danh mục "{category_name}" thành công', 'data': {'id': category_id, 'name': category_name}}, status=status.HTTP_200_OK)
+                    except IntegrityError:
+                        return Response({'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Force delete products then category
+                if force:
+                    try:
+                        from products.models import Product
+                        Product.objects.filter(category_id=instance.id).delete()
+                        category_name = instance.name
+                        category_id = instance.id
+                        instance.delete()
+                        return Response({'message': f'Đã xóa {product_count} sản phẩm và danh mục "{category_name}" thành công', 'data': {'id': category_id, 'name': category_name}}, status=status.HTTP_200_OK)
+                    except IntegrityError:
+                        return Response({'error': 'Không thể xóa danh mục hoặc sản phẩm liên quan.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                return Response({'error': f'Không thể xóa danh mục này vì đang chứa {product_count} sản phẩm. Sử dụng `reassign_to` để chuyển sản phẩm hoặc `force: true` để xóa tất cả sản phẩm trước.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Empty category: delete normally
+            try:
+                category_name = instance.name
+                self.perform_destroy(instance)
+                return Response({'message': f'Xóa danh mục "{category_name}" thành công', 'data': {'id': instance.id, 'name': category_name}}, status=status.HTTP_200_OK)
+            except IntegrityError:
+                return Response({'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'}, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception as e:
-            return Response(
-                {'error': f'Lỗi khi xóa danh mục: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.exception('Unhandled error in destroy category')
+            return Response({'error': 'Lỗi máy chủ khi xóa danh mục', 'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -172,40 +203,71 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        category = self.get_object()
-        
-        # Kiểm tra xem danh mục có sản phẩm không
-        if hasattr(category, 'products') and category.products.exists():
-            product_count = category.products.count()
-            return Response(
-                {
-                    'error': f'Không thể xóa danh mục này vì đang chứa {product_count} sản phẩm',
-                    'product_count': product_count
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         try:
-            category_id = category.id
-            category_name = category.name
-            category.delete()
-            return Response(
-                {
-                    'message': f'Xóa danh mục "{category_name}" thành công',
-                    'data': {
-                        'id': category_id,
-                        'name': category_name
-                    }
-                },
-                status=status.HTTP_200_OK
-            )
-        except IntegrityError:
-            return Response(
-                {'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            category = self.get_object()
+
+            # Hỗ trợ tuỳ chọn xóa: reassign_to (id) hoặc force (true)
+            reassign_to = request.data.get('reassign_to')
+            force = request.data.get('force', False)
+
+            # Nếu có sản phẩm trong danh mục
+            if hasattr(category, 'products') and category.products.exists():
+                product_count = category.products.count()
+
+                # Nếu admin muốn chuyển sản phẩm sang danh mục khác
+                if reassign_to:
+                    try:
+                        new_cat = Category.objects.get(pk=int(reassign_to))
+                    except Category.DoesNotExist:
+                        return Response({'error': 'Danh mục để chuyển không tồn tại.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    if new_cat.id == category.id:
+                        return Response({'error': 'Không thể chuyển sản phẩm sang cùng một danh mục.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                    # Import Product locally to avoid circular imports
+                    try:
+                        from products.models import Product
+                    except Exception:
+                        logger.exception('Products app import failed')
+                        return Response({'error': 'Products app không khả dụng.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                    # Reassign products
+                    Product.objects.filter(category_id=category.id).update(category=new_cat)
+                    # Now safe to delete
+                    try:
+                        category_name = category.name
+                        category_id = category.id
+                        category.delete()
+                        return Response({'message': f'Chuyển {product_count} sản phẩm sang danh mục "{new_cat.name}" và xóa danh mục "{category_name}" thành công', 'data': {'id': category_id, 'name': category_name}}, status=status.HTTP_200_OK)
+                    except IntegrityError:
+                        return Response({'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Nếu admin yêu cầu force xóa (xóa luôn sản phẩm)
+                if force:
+                    try:
+                        # import Product locally to avoid circular imports
+                        from products.models import Product
+                        # delete products in this category first
+                        Product.objects.filter(category_id=category.id).delete()
+                        category_name = category.name
+                        category_id = category.id
+                        category.delete()
+                        return Response({'message': f'Đã xóa {product_count} sản phẩm và danh mục "{category_name}" thành công', 'data': {'id': category_id, 'name': category_name}}, status=status.HTTP_200_OK)
+                    except IntegrityError:
+                        return Response({'error': 'Không thể xóa danh mục hoặc sản phẩm liên quan.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Nếu không có tuỳ chọn hợp lệ, chặn xóa và trả về thông báo
+                return Response({'error': f'Không thể xóa danh mục này vì đang chứa {product_count} sản phẩm. Sử dụng `reassign_to` để chuyển sản phẩm hoặc `force: true` để xóa tất cả sản phẩm trước.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Nếu danh mục rỗng, xóa bình thường
+            try:
+                category_id = category.id
+                category_name = category.name
+                category.delete()
+                return Response({'message': f'Xóa danh mục "{category_name}" thành công', 'data': {'id': category_id, 'name': category_name}}, status=status.HTTP_200_OK)
+            except IntegrityError:
+                return Response({'error': 'Không thể xóa danh mục. Danh mục này có liên kết với dữ liệu khác.'}, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception as e:
-            return Response(
-                {'error': f'Lỗi khi xóa danh mục: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            logger.exception('Unhandled error in delete_category')
+            return Response({'error': 'Lỗi máy chủ khi xóa danh mục', 'detail': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

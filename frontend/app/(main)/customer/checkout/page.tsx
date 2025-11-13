@@ -26,12 +26,12 @@ const CheckoutPage = () => {
     const [isBuyNow, setIsBuyNow] = useState(false);
 
     const [formData, setFormData] = useState({
-        fullName: 'Nguyễn Văn A',
-        phone: '0901234567',
-        email: 'nguyenvana@example.com',
-        address: '123 Nguyễn Văn Linh, Quận 7',
-        city: 'TP. Hồ Chí Minh',
-        district: 'Quận 7',
+        fullName: '',
+        phone: '',
+        email: '',
+        address: '',
+        city: '',
+        district: '',
         note: ''
     });
 
@@ -39,37 +39,61 @@ const CheckoutPage = () => {
 
     // Load cart items on mount
     useEffect(() => {
-        const buyNowItem = sessionStorage.getItem('buyNowItem');
-        if (buyNowItem) {
+        // First check for selectedCheckoutItems (from cart page)
+        const selectedCheckoutItems = sessionStorage.getItem('selectedCheckoutItems');
+        if (selectedCheckoutItems) {
             try {
-                const item = JSON.parse(buyNowItem);
-                setCartItems([item]);
-                setIsBuyNow(true);
+                const items = JSON.parse(selectedCheckoutItems);
+                // Convert from CartItem format to CheckoutItem format
+                const checkoutItems = items.map((item: any) => ({
+                    id: item.product_id,  // Use product_id for checkout
+                    name: item.product_name,
+                    price: item.product_price,
+                    quantity: item.quantity,
+                    image: item.product_image,
+                    unit: item.unit
+                }));
+                setCartItems(checkoutItems);
+                setIsBuyNow(false);
                 // Clear after loading
-                sessionStorage.removeItem('buyNowItem');
+                sessionStorage.removeItem('selectedCheckoutItems');
             } catch (error) {
-                console.error('Error parsing buyNowItem:', error);
+                console.error('Error parsing selectedCheckoutItems:', error);
             }
         } else {
-            // Default cart items for normal checkout
-            setCartItems([
-                {
-                    id: 1,
-                    name: 'Gấu Bông Màu Hồng Nhỏ',
-                    price: 89000,
-                    quantity: 1,
-                    image: '/demo/images/product/placeholder.png',
-                    unit: '30cm'
-                },
-                {
-                    id: 2,
-                    name: 'Gấu Bông Màu Nâu Vừa',
-                    price: 149000,
-                    quantity: 1,
-                    image: '/demo/images/product/placeholder.png',
-                    unit: '60cm'
+            // Check for buyNowItem (from product detail page)
+            const buyNowItem = sessionStorage.getItem('buyNowItem');
+            if (buyNowItem) {
+                try {
+                    const item = JSON.parse(buyNowItem);
+                    setCartItems([item]);
+                    setIsBuyNow(true);
+                    // Clear after loading
+                    sessionStorage.removeItem('buyNowItem');
+                } catch (error) {
+                    console.error('Error parsing buyNowItem:', error);
                 }
-            ]);
+            } else {
+                // Default cart items for normal checkout
+                setCartItems([
+                    {
+                        id: 1,
+                        name: 'Gấu Bông Màu Hồng Nhỏ',
+                        price: 89000,
+                        quantity: 1,
+                        image: '/demo/images/product/placeholder.png',
+                        unit: '30cm'
+                    },
+                    {
+                        id: 2,
+                        name: 'Gấu Bông Màu Nâu Vừa',
+                        price: 149000,
+                        quantity: 1,
+                        image: '/demo/images/product/placeholder.png',
+                        unit: '60cm'
+                    }
+                ]);
+            }
         }
     }, []);
 
@@ -127,13 +151,13 @@ const CheckoutPage = () => {
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Đặt hàng thành công',
-                    detail: `Mã đơn hàng: ${response.order_code}`,
+                    detail: 'Chờ xác nhận từ cửa hàng',
                     life: 3000
                 });
 
                 setTimeout(() => {
                     router.push('/customer/orders');
-                }, 2000);
+                }, 3000);
             } else {
                 toast.current?.show({
                     severity: 'error',
