@@ -7,7 +7,7 @@ from uuid import uuid4
 from decimal import Decimal
 from .models import Order, OrderItem, Cart, CartItem
 from .serializers import OrderSerializer, OrderCreateSerializer, CartSerializer, CartItemDetailSerializer
-from products.models import Product
+from products.models import Product, ProductVariant
 import logging
 
 logger = logging.getLogger(__name__)
@@ -48,32 +48,64 @@ class CartViewSet(viewsets.ViewSet):
             except Product.DoesNotExist:
                 return Response({'error': 'Product not found'}, status=status.HTTP_404_NOT_FOUND)
             
-            # Kiểm tra số lượng tồn kho
-            if product.stock < quantity:
-                return Response(
-                    {'error': f'Số lượng tồn kho không đủ. Tồn kho: {product.stock}'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # Kiểm tra stock từ variant nếu có unit
+            if unit and product.variants.exists():
+                variant = product.variants.filter(size=unit).first()
+                if not variant:
+                    return Response(
+                        {'error': f'Kích thước {unit} không tồn tại'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                if variant.stock < quantity:
+                    return Response(
+                        {'error': f'Số lượng tồn kho không đủ. Tồn kho: {variant.stock}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                # Kiểm tra số lượng tồn kho từ product.stock
+                if product.stock < quantity:
+                    return Response(
+                        {'error': f'Số lượng tồn kho không đủ. Tồn kho: {product.stock}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             
             # Lấy hoặc tạo giỏ hàng
             cart, created = Cart.objects.get_or_create(user=request.user)
+            
+            # Lấy giá từ variant hoặc product
+            item_price = product.price
+            if unit and product.variants.exists():
+                variant = product.variants.filter(size=unit).first()
+                if variant:
+                    item_price = variant.price
             
             # Thêm hoặc cập nhật sản phẩm trong giỏ hàng
             cart_item, item_created = CartItem.objects.get_or_create(
                 cart=cart,
                 product=product,
                 unit=unit,
-                defaults={'quantity': quantity}
+                defaults={'quantity': quantity, 'price': item_price}
             )
             
             if not item_created:
                 # Nếu sản phẩm đã có trong giỏ, cập nhật số lượng
                 new_quantity = cart_item.quantity + quantity
-                if product.stock < new_quantity:
-                    return Response(
-                        {'error': f'Số lượng tồn kho không đủ. Tồn kho: {product.stock}'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                
+                # Kiểm tra stock của variant mới
+                if unit and product.variants.exists():
+                    variant = product.variants.filter(size=unit).first()
+                    if variant and variant.stock < new_quantity:
+                        return Response(
+                            {'error': f'Số lượng tồn kho không đủ. Tồn kho: {variant.stock}'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                else:
+                    if product.stock < new_quantity:
+                        return Response(
+                            {'error': f'Số lượng tồn kho không đủ. Tồn kho: {product.stock}'},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                
                 cart_item.quantity = new_quantity
                 cart_item.save()
             
@@ -217,13 +249,20 @@ class OrderViewSet(viewsets.ViewSet):
                     try:
                         product_id = int(item_data.get('id'))
                         quantity = int(item_data.get('quantity', 1))
-                        product = Product.objects.get(id=product_id)
+                        # IMPORTANT: Use price from item_data if provided, otherwise use product.price
+                        item_price = Decimal(str(item_data.get('price', 0)))
+                        if item_price == 0:
+                            # Fallback to product price if not provided in item_data
+                            product = Product.objects.get(id=product_id)
+                            item_price = Decimal(str(product.price))
+                        else:
+                            product = Product.objects.get(id=product_id)
                         
-                        subtotal += Decimal(str(product.price)) * quantity
+                        subtotal += item_price * quantity
                         order_items.append({
                             'product': product,
                             'product_name': product.name,
-                            'product_price': product.price,
+                            'product_price': item_price,
                             'quantity': quantity,
                             'unit': item_data.get('unit', product.unit or ''),
                         })
@@ -260,7 +299,7 @@ class OrderViewSet(viewsets.ViewSet):
                 order.order_code = f"DH{order.id:03d}"
                 order.save(update_fields=['order_code'])
                 
-                # Tạo order items
+                # Tạo order items và cập nhật stock
                 for item in order_items:
                     OrderItem.objects.create(
                         order=order,
@@ -270,6 +309,26 @@ class OrderViewSet(viewsets.ViewSet):
                         quantity=item['quantity'],
                         unit=item['unit'],
                     )
+                    
+                    # Cập nhật tồn kho
+                    product = item['product']
+                    unit = item['unit']
+                    quantity = item['quantity']
+                    
+                    # Nếu có unit (variant), cập nhật stock của variant
+                    if unit and product.variants.exists():
+                        variant = product.variants.filter(size=unit).first()
+                        if variant:
+                            variant.stock -= quantity
+                            variant.save()
+                            logger.info(f"Updated variant {variant.size} stock: {variant.stock + quantity} -> {variant.stock}")
+                    else:
+                        # Cập nhật stock của product
+                        product.stock -= quantity
+                        product.save()
+                        logger.info(f"Updated product {product.name} stock: {product.stock + quantity} -> {product.stock}")
+                    
+                    # Lưu ý: sold_count sẽ được cập nhật khi order được delivered, không phải lúc tạo
                 
                 response_serializer = OrderSerializer(order)
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -325,8 +384,19 @@ class OrderViewSet(viewsets.ViewSet):
                 )
             
             order = Order.objects.get(id=order_id)
+            old_status = order.status
             order.status = new_status
             order.save()
+            
+            # Cập nhật sold_count khi order được delivered
+            if new_status == 'delivered' and old_status != 'delivered':
+                # Lấy tất cả items trong order
+                for order_item in order.items.all():
+                    product = order_item.product
+                    if product:
+                        product.sold_count += order_item.quantity
+                        product.save(update_fields=['sold_count'])
+                        logger.info(f"Updated product {product.name} sold_count: +{order_item.quantity}")
             
             serializer = OrderSerializer(order)
             return Response(serializer.data, status=status.HTTP_200_OK)

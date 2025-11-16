@@ -5,12 +5,13 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Product, ProductImage
+from .models import Product, ProductImage, ProductVariant
 from .serializers import (
     ProductSerializer,
     ProductListSerializer,
     ProductCreateUpdateSerializer,
-    ProductImageSerializer
+    ProductImageSerializer,
+    ProductVariantSerializer
 )
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -286,3 +287,42 @@ class ProductViewSet(viewsets.ModelViewSet):
         products = self.queryset.filter(stock=0)
         serializer = ProductListSerializer(products, many=True, context={'request': request})
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def save_variants(self, request, *args, **kwargs):
+        """Lưu biến thể sản phẩm (size, giá, tồn kho)"""
+        product = self.get_object()
+        variants_data = request.data.get('variants', [])
+        
+        if not variants_data:
+            return Response(
+                {'error': 'Vui lòng cung cấp dữ liệu biến thể'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Xóa tất cả biến thể cũ
+            product.variants.all().delete()
+            
+            # Tạo biến thể mới
+            created_variants = []
+            for variant_data in variants_data:
+                variant = ProductVariant.objects.create(
+                    product=product,
+                    size=variant_data.get('size'),
+                    price=variant_data.get('price', 0),
+                    stock=variant_data.get('stock', 0)
+                )
+                created_variants.append(variant)
+            
+            serializer = ProductVariantSerializer(created_variants, many=True)
+            return Response({
+                'message': 'Lưu biến thể sản phẩm thành công',
+                'variants': serializer.data
+            }, status=status.HTTP_201_CREATED)
+        
+        except Exception as e:
+            return Response(
+                {'error': f'Lỗi khi lưu biến thể: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

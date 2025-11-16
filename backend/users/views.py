@@ -18,7 +18,9 @@ User = get_user_model()
 class IsAdminUser(IsAuthenticated):
     """Permission class for admin-only access"""
     def has_permission(self, request, view):
-        return super().has_permission(request, view) and request.user.role == 'admin'
+        is_authenticated = super().has_permission(request, view)
+        is_admin = request.user.role in ['admin'] or request.user.is_staff
+        return is_authenticated and is_admin
 
 
 class UserRegistrationView(generics.CreateAPIView):

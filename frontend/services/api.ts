@@ -392,6 +392,13 @@ export const productAPI = {
         return await apiRequest(`/products/${id}/toggle_status/`, {
             method: 'POST'
         });
+    },
+
+    saveVariants: async (id: number, variants: Array<{ size: string; price: number; stock: number }>) => {
+        return await apiRequest(`/products/${id}/save_variants/`, {
+            method: 'POST',
+            body: JSON.stringify({ variants })
+        });
     }
 };
 
@@ -408,18 +415,19 @@ export const orderAPI = {
         payment_method: string;
         items: Array<{
             id: number;
-            name: string;
+            name?: string;
             price: number;
             quantity: number;
             unit: string;
             image?: string;
         }>;
     }) => {
-        // Transform items to match backend format
+        // Transform items to match backend format - include price!
         const items = orderData.items.map(item => ({
             id: item.id.toString(),
             quantity: item.quantity.toString(),
-            unit: item.unit
+            unit: item.unit,
+            price: item.price.toString()  // Include price from checkout
         }));
 
         return await apiRequest('/orders/create_order/', {

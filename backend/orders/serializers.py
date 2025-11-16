@@ -6,7 +6,7 @@ class CartItemDetailSerializer(serializers.ModelSerializer):
     """Serializer cho chi tiết sản phẩm trong giỏ hàng"""
     product_id = serializers.IntegerField(source='product.id', read_only=True)
     product_name = serializers.CharField(source='product.name', read_only=True)
-    product_price = serializers.DecimalField(source='product.price', max_digits=15, decimal_places=0, read_only=True)
+    product_price = serializers.DecimalField(source='price', max_digits=15, decimal_places=0, read_only=True)
     product_image = serializers.SerializerMethodField()
     total_price = serializers.SerializerMethodField()
     
@@ -26,7 +26,8 @@ class CartItemDetailSerializer(serializers.ModelSerializer):
     
     def get_total_price(self, obj):
         """Tính tổng giá cho mục này"""
-        return obj.total_price
+        price = obj.price if obj.price else obj.product.price
+        return price * obj.quantity
 
 
 class CartSerializer(serializers.ModelSerializer):
@@ -56,7 +57,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    items = OrderItemSerializer(many=True, read_only=True)
+    items = OrderItemSerializer(many=True, read_only=True, source='items.all')
     
     class Meta:
         model = Order

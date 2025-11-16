@@ -181,7 +181,8 @@ const CartPage = () => {
     };
 
     const priceBodyTemplate = (rowData: CartItem) => {
-        return new Intl.NumberFormat('vi-VN').format(rowData.product_price) + ' VND';
+        const price = rowData.product_price || 0;
+        return new Intl.NumberFormat('vi-VN').format(price) + ' VND';
     };
 
     const quantityBodyTemplate = (rowData: CartItem) => {
@@ -201,7 +202,8 @@ const CartPage = () => {
     };
 
     const totalPriceBodyTemplate = (rowData: CartItem) => {
-        return new Intl.NumberFormat('vi-VN').format(rowData.total_price) + ' VND';
+        const total = rowData.total_price || 0;
+        return new Intl.NumberFormat('vi-VN').format(total) + ' VND';
     };
 
     const actionBodyTemplate = (rowData: CartItem) => {
@@ -277,7 +279,7 @@ const CartPage = () => {
         
         return (cartData?.items || [])
             .filter(item => selectedItems.has(item.id))
-            .reduce((sum, item) => sum + item.total_price, 0);
+            .reduce((sum, item) => sum + (item.total_price || 0), 0);
     };
 
     const calculateShipping = () => {
@@ -374,9 +376,7 @@ const CartPage = () => {
                                                     <span className="font-bold text-xl">Tổng cộng:</span>
                                                     <span className="font-bold text-xl text-primary">{new Intl.NumberFormat('vi-VN').format(calculateTotal())} VND</span>
                                                 </div>
-                                                {calculateSubtotal() < 500000 && (
-                                                    <p className="text-xs text-500 mb-3">Mua thêm {new Intl.NumberFormat('vi-VN').format(500000 - calculateSubtotal())} để được miễn phí vận chuyển!</p>
-                                                )}
+                                                
                                                 <Button 
                                                     label="Thanh toán" 
                                                     icon="pi pi-credit-card" 

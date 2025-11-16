@@ -82,4 +82,26 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ['id', 'username', 'email', 'full_name', 'phone', 'role', 
                   'address', 'avatar', 'is_active', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'username', 'email']
+        extra_kwargs = {
+            'address': {'required': False, 'allow_blank': True},
+            'avatar': {'required': False},
+            'is_active': {'required': False},
+            'role': {'required': False},
+            'full_name': {'required': False},
+            'phone': {'required': False},
+        }
+    
+    def validate_phone(self, value):
+        """Validate phone number when updating"""
+        if value:
+            if not value.isdigit():
+                raise serializers.ValidationError("Số điện thoại chỉ được chứa chữ số.")
+            if len(value) != 10:
+                raise serializers.ValidationError("Số điện thoại phải có 10 chữ số.")
+            
+            # Check if phone already exists (exclude current user)
+            existing_user = User.objects.filter(phone=value).exclude(id=self.instance.id if self.instance else None)
+            if existing_user.exists():
+                raise serializers.ValidationError("Số điện thoại này đã được sử dụng.")
+        return value

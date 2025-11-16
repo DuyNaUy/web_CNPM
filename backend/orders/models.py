@@ -83,6 +83,7 @@ class CartItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
     unit = models.CharField(max_length=50, blank=True)  # Size/unit sản phẩm (30cm, 60cm, 90cm, v.v.)
+    price = models.DecimalField(max_digits=15, decimal_places=0, default=0)  # Giá tại thời điểm thêm vào giỏ
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -97,7 +98,7 @@ class CartItem(models.Model):
     @property
     def total_price(self):
         """Tính tổng giá cho mục này"""
-        return self.product.price * self.quantity
+        return self.price * self.quantity if self.price else self.product.price * self.quantity
 
 
 class OrderItem(models.Model):

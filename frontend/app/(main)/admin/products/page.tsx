@@ -45,6 +45,7 @@ interface Product {
     main_image_url?: string;
     images?: string;
     product_images?: ProductImage[];
+    variants?: ProductVariant[];
     origin?: string;
     size?: string;
     color?: string;
@@ -61,12 +62,24 @@ interface Category {
     status?: string;
 }
 
+interface ProductVariant {
+    id?: number;
+    size: string;
+    price: number;
+    stock: number;
+}
+
 const ProductsPage = () => {
     const [products, setProducts] = useState<Product[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(false);
     const [productDialog, setProductDialog] = useState(false);
     const [deleteProductDialog, setDeleteProductDialog] = useState(false);
+    const [variants, setVariants] = useState<ProductVariant[]>([
+        { size: '30cm', price: 0, stock: 0 },
+        { size: '60cm', price: 0, stock: 0 },
+        { size: '90cm', price: 0, stock: 0 }
+    ]);
     const [product, setProduct] = useState<Product>({
         id: 0,
         name: '',
@@ -89,6 +102,7 @@ const ProductsPage = () => {
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
     const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
     const [totalRecords, setTotalRecords] = useState(0);
+    const [activeTab, setActiveTab] = useState(0);
     const toast = useRef<Toast>(null);
     const fileUploadRef = useRef<FileUpload>(null);
     const galleryUploadRef = useRef<FileUpload>(null);
@@ -208,10 +222,31 @@ const ProductsPage = () => {
 
     const hideDialog = () => {
         setProductDialog(false);
+        setActiveTab(0);
         setSelectedFile(null);
         setPreviewImage(null);
         setAdditionalImages([]);
         setProductImages([]);
+        // Reset form
+        setProduct({
+            id: 0,
+            name: '',
+            category: 0,
+            price: 0,
+            stock: 0,
+            unit: '30cm',
+            status: 'active',
+            description: '',
+            detail_description: '',
+            origin: '',
+            size: '',
+            color: '',
+        });
+        setVariants([
+            { size: '30cm', price: 0, stock: 0 },
+            { size: '60cm', price: 0, stock: 0 },
+            { size: '90cm', price: 0, stock: 0 }
+        ]);
     };
 
     const hideDeleteProductDialog = () => {
@@ -239,11 +274,37 @@ const ProductsPage = () => {
             return;
         }
 
-        if (product.price <= 0) {
+        // Validate hình ảnh (bắt buộc cho sản phẩm mới)
+        if (!product.id && !previewImage) {
             toast.current?.show({
                 severity: 'warn',
                 summary: 'Cảnh báo',
-                detail: 'Giá sản phẩm phải lớn hơn 0',
+                detail: 'Vui lòng chọn hình ảnh sản phẩm',
+                life: 3000
+            });
+            return;
+        }
+
+        // Validate variants
+        const hasAnyVariant = variants.some(v => v.price > 0);
+        if (!hasAnyVariant) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Cảnh báo',
+                detail: 'Vui lòng nhập giá cho ít nhất một size',
+                life: 3000
+            });
+            return;
+        }
+
+        // Validate tồn kho: tất cả size có giá phải có tồn kho > 0
+        const variantsWithPrice = variants.filter(v => v.price > 0);
+        const missingStock = variantsWithPrice.some(v => v.stock <= 0);
+        if (missingStock) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Cảnh báo',
+                detail: 'Vui lòng nhập số lượng tồn kho > 0 cho tất cả size có giá',
                 life: 3000
             });
             return;
@@ -255,9 +316,11 @@ const ProductsPage = () => {
             const formData = new FormData();
             formData.append('name', product.name);
             formData.append('category', product.category.toString());
-            formData.append('price', product.price.toString());
-            formData.append('stock', product.stock.toString());
-            formData.append('unit', product.unit);
+            // Set default price from first variant or 1
+            const firstVariantPrice = variants.find(v => v.price > 0)?.price || 1;
+            formData.append('price', firstVariantPrice.toString());
+            formData.append('stock', '0');
+            formData.append('unit', '30cm');
             formData.append('status', product.status);
             formData.append('description', product.description || '');
 
@@ -265,7 +328,6 @@ const ProductsPage = () => {
                 formData.append('detail_description', product.detail_description);
             }
             if (product.origin) formData.append('origin', product.origin);
-            if (product.size) formData.append('size', product.size);
             if (product.color) formData.append('color', product.color);
 
             if (selectedFile) {
@@ -276,6 +338,10 @@ const ProductsPage = () => {
                 // Update existing product
                 const response = await productAPI.update(product.id, formData);
                 if (response.data || response.success) {
+                    const productId = response.data?.id || product.id;
+                    // Save variants
+                    await productAPI.saveVariants(productId, variants);
+                    
                     toast.current?.show({
                         severity: 'success',
                         summary: 'Thành công',
@@ -287,6 +353,13 @@ const ProductsPage = () => {
                 // Create new product
                 const response = await productAPI.create(formData);
                 if (response.data || response.success) {
+                    const newProductId = response.data?.id;
+                    
+                    // Save variants if product created successfully
+                    if (newProductId) {
+                        await productAPI.saveVariants(newProductId, variants);
+                    }
+                    
                     toast.current?.show({
                         severity: 'success',
                         summary: 'Thành công',
@@ -332,6 +405,18 @@ const ProductsPage = () => {
                 size: fullProduct.size || '',
                 color: fullProduct.color || ''
             });
+
+            // Load variants if available
+            if (fullProduct.variants && fullProduct.variants.length > 0) {
+                setVariants(fullProduct.variants);
+            } else {
+                // Reset to default variants if not available
+                setVariants([
+                    { size: '30cm', price: 0, stock: 0 },
+                    { size: '60cm', price: 0, stock: 0 },
+                    { size: '90cm', price: 0, stock: 0 }
+                ]);
+            }
 
             setPreviewImage(fullProduct.main_image_url || null);
             setSelectedFile(null);
@@ -556,11 +641,28 @@ const ProductsPage = () => {
     };
 
     const priceBodyTemplate = (rowData: Product) => {
+        // Nếu có 2 hay nhiều variants, hiển thị min-max
+        if (rowData.variants && rowData.variants.length >= 2) {
+            const prices = rowData.variants.filter(v => v.price > 0).map(v => v.price);
+            if (prices.length > 0) {
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                if (minPrice === maxPrice) {
+                    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(minPrice);
+                }
+                return `${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(minPrice)} - ${new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(maxPrice)}`;
+            }
+        }
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rowData.price);
     };
 
     const stockBodyTemplate = (rowData: Product) => {
-        return <span className={rowData.stock < 50 ? 'text-orange-500 font-bold' : ''}>{rowData.stock}</span>;
+        let totalStock = rowData.stock;
+        // Nếu có variants, tính tổng tồn kho từ tất cả variants
+        if (rowData.variants && rowData.variants.length > 0) {
+            totalStock = rowData.variants.reduce((sum, v) => sum + v.stock, 0);
+        }
+        return <span className={totalStock < 50 ? 'text-orange-500 font-bold' : ''}>{totalStock}</span>;
     };
 
     const imageBodyTemplate = (rowData: Product) => {
@@ -699,7 +801,7 @@ const ProductsPage = () => {
                     </DataTable>
 
                     <Dialog visible={productDialog} style={{ width: '70rem' }} breakpoints={{ '960px': '90vw', '641px': '95vw' }} header="Thông tin sản phẩm" modal className="p-fluid" footer={productDialogFooter} onHide={hideDialog}>
-                        <TabView>
+                        <TabView activeIndex={activeTab} onTabChange={(e) => setActiveTab(e.index)}>
                             <TabPanel header="Thông tin cơ bản">
                                 <div className="grid">
                                     <div className="col-12 md:col-6">
@@ -725,24 +827,10 @@ const ProductsPage = () => {
                                         </div>
 
                                         <div className="field">
-                                            <label htmlFor="price" className="font-semibold">
-                                                Giá bán (VNĐ) <span className="text-red-500">*</span>
+                                            <label htmlFor="status" className="font-semibold">
+                                                Trạng thái
                                             </label>
-                                            <InputNumber id="price" value={product.price} onValueChange={(e) => onNumberChange(e.value, 'price')} mode="currency" currency="VND" locale="vi-VN" className={product.price <= 0 ? 'p-invalid' : ''} />
-                                        </div>
-
-                                        <div className="field">
-                                            <label htmlFor="stock" className="font-semibold">
-                                                Số lượng tồn kho
-                                            </label>
-                                            <InputNumber id="stock" value={product.stock} onValueChange={(e) => onNumberChange(e.value, 'stock')} min={0} />
-                                        </div>
-
-                                        <div className="field">
-                                            <label htmlFor="unit" className="font-semibold">
-                                                Size
-                                            </label>
-                                            <Dropdown id="unit" value={product.unit} options={units} onChange={(e) => onDropdownChange(e, 'unit')} placeholder="Chọn size" />
+                                            <Dropdown id="status" value={product.status} options={statuses} onChange={(e) => onDropdownChange(e, 'status')} placeholder="Chọn trạng thái" />
                                         </div>
                                     </div>
 
@@ -766,13 +854,6 @@ const ProductsPage = () => {
                                             )}
                                             <small className="block mt-2 text-500">Định dạng: JPG, PNG, GIF. Kích thước tối đa: 5MB</small>
                                         </div>
-
-                                        <div className="field">
-                                            <label htmlFor="status" className="font-semibold">
-                                                Trạng thái
-                                            </label>
-                                            <Dropdown id="status" value={product.status} options={statuses} onChange={(e) => onDropdownChange(e, 'status')} placeholder="Chọn trạng thái" />
-                                        </div>
                                     </div>
 
                                     <div className="col-12">
@@ -788,6 +869,53 @@ const ProductsPage = () => {
                                                 Mô tả chi tiết
                                             </label>
                                             <InputTextarea id="detail_description" value={product.detail_description} onChange={(e) => onInputChange(e, 'detail_description')} rows={5} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </TabPanel>
+
+                            <TabPanel header="Kích thước & Giá">
+                                <div className="grid">
+                                    <div className="col-12">
+                                        <h5 className="mb-3">Chọn kích thước và nhập giá, số lượng tồn kho</h5>
+                                        <div className="grid">
+                                            {variants.map((variant, index) => (
+                                                <div key={variant.size} className="col-12 md:col-4">
+                                                    <div className="surface-100 p-4 border-round">
+                                                        <h6 className="text-900 mb-3 font-semibold">{variant.size}</h6>
+                                                        
+                                                        <div className="field mb-3">
+                                                            <label className="font-semibold text-sm">Giá (VNĐ) <span className="text-red-500">*</span></label>
+                                                            <InputNumber 
+                                                                value={variant.price} 
+                                                                onValueChange={(e) => {
+                                                                    const newVariants = [...variants];
+                                                                    newVariants[index].price = e.value || 0;
+                                                                    setVariants(newVariants);
+                                                                }}
+                                                                mode="currency"
+                                                                currency="VND"
+                                                                locale="vi-VN"
+                                                                className="w-full"
+                                                            />
+                                                        </div>
+
+                                                        <div className="field">
+                                                            <label className="font-semibold text-sm">Số lượng tồn kho</label>
+                                                            <InputNumber 
+                                                                value={variant.stock} 
+                                                                onValueChange={(e) => {
+                                                                    const newVariants = [...variants];
+                                                                    newVariants[index].stock = e.value || 0;
+                                                                    setVariants(newVariants);
+                                                                }}
+                                                                min={0}
+                                                                className="w-full"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>

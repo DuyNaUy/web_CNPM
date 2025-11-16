@@ -1,7 +1,16 @@
 from rest_framework import serializers
-from .models import Product, ProductImage
+from .models import Product, ProductImage, ProductVariant
 from categories.serializers import CategorySerializer
 import json
+
+
+class ProductVariantSerializer(serializers.ModelSerializer):
+    """Serializer cho biến thể sản phẩm"""
+    
+    class Meta:
+        model = ProductVariant
+        fields = ['id', 'size', 'price', 'stock']
+
 
 class ProductImageSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -25,6 +34,9 @@ class ProductListSerializer(serializers.ModelSerializer):
     main_image_url = serializers.SerializerMethodField()
     discount_percentage = serializers.ReadOnlyField()
     in_stock = serializers.ReadOnlyField()
+    variants = ProductVariantSerializer(many=True, read_only=True)
+    min_price = serializers.SerializerMethodField()
+    max_price = serializers.SerializerMethodField()
     
     class Meta:
         model = Product
@@ -33,7 +45,7 @@ class ProductListSerializer(serializers.ModelSerializer):
             'price', 'old_price', 'discount_percentage', 'stock', 'unit',
             'rating', 'reviews_count', 'sold_count',
             'main_image', 'main_image_url', 'description',
-            'status', 'in_stock',
+            'status', 'in_stock', 'variants', 'min_price', 'max_price',
             'created_at', 'updated_at'
         ]
     
@@ -44,6 +56,20 @@ class ProductListSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.main_image.url)
             return obj.main_image.url
         return None
+    
+    def get_min_price(self, obj):
+        """Lấy giá tối thiểu từ variants"""
+        variants = obj.variants.all()
+        if variants.exists():
+            return min(v.price for v in variants)
+        return obj.price
+    
+    def get_max_price(self, obj):
+        """Lấy giá tối đa từ variants"""
+        variants = obj.variants.all()
+        if variants.exists():
+            return max(v.price for v in variants)
+        return obj.price
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -52,10 +78,13 @@ class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     main_image_url = serializers.SerializerMethodField()
     product_images = ProductImageSerializer(many=True, read_only=True)
+    variants = ProductVariantSerializer(many=True, read_only=True)
     images_list = serializers.ReadOnlyField()
     specifications_dict = serializers.ReadOnlyField()
     discount_percentage = serializers.ReadOnlyField()
     in_stock = serializers.ReadOnlyField()
+    min_price = serializers.SerializerMethodField()
+    max_price = serializers.SerializerMethodField()
     
     # Fields cho việc upload images và specifications
     images_data = serializers.ListField(
@@ -78,7 +107,8 @@ class ProductSerializer(serializers.ModelSerializer):
             'rating', 'reviews_count', 'sold_count',
             'description', 'detail_description',
             'main_image', 'main_image_url', 'images', 'images_list', 'images_data',
-            'product_images', 'specifications', 'specifications_dict', 'specifications_data',
+            'product_images', 'variants', 'min_price', 'max_price',
+            'specifications', 'specifications_dict', 'specifications_data',
             'origin', 'weight', 'preservation', 'expiry', 'certification',
             'status', 'in_stock',
             'created_at', 'updated_at'
@@ -92,6 +122,20 @@ class ProductSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.main_image.url)
             return obj.main_image.url
         return None
+    
+    def get_min_price(self, obj):
+        """Lấy giá tối thiểu từ variants"""
+        variants = obj.variants.all()
+        if variants.exists():
+            return min(v.price for v in variants)
+        return obj.price
+    
+    def get_max_price(self, obj):
+        """Lấy giá tối đa từ variants"""
+        variants = obj.variants.all()
+        if variants.exists():
+            return max(v.price for v in variants)
+        return obj.price
     
     def validate_price(self, value):
         """Kiểm tra giá phải lớn hơn 0"""

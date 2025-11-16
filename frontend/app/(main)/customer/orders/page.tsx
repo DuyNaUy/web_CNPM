@@ -50,8 +50,18 @@ const OrdersPage = () => {
         setLoading(true);
         try {
             const response = await orderAPI.getMyOrders();
-            if (response && Array.isArray(response)) {
-                setOrders(response);
+            console.log('Orders response:', response);
+            
+            let ordersList = response;
+            // Handle if response has data property
+            if (response && response.data) {
+                ordersList = response.data;
+            }
+            
+            if (ordersList && Array.isArray(ordersList)) {
+                setOrders(ordersList);
+            } else if (!ordersList) {
+                setOrders([]);
             }
         } catch (error) {
             console.error('Error loading orders:', error);
@@ -101,7 +111,7 @@ const OrdersPage = () => {
 
     const cancelOrder = (order: Order) => {
         confirmDialog({
-            message: `Bạn có chắc chắn muốn hủy đơn hàng ${order.orderNumber}?`,
+            message: `Bạn có chắc chắn muốn hủy đơn hàng ${order.order_code}?`,
             header: 'Xác nhận hủy đơn',
             icon: 'pi pi-exclamation-triangle',
             accept: () => {
@@ -120,7 +130,7 @@ const OrdersPage = () => {
 
     const returnOrder = (order: Order) => {
         confirmDialog({
-            message: `Bạn có muốn yêu cầu hoàn hàng cho đơn hàng ${order.orderNumber}?`,
+            message: `Bạn có muốn yêu cầu hoàn hàng cho đơn hàng ${order.order_code}?`,
             header: 'Yêu cầu hoàn hàng',
             icon: 'pi pi-question-circle',
             accept: () => {

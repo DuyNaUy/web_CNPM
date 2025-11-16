@@ -24,6 +24,13 @@ interface Category {
     product_count: number;
 }
 
+interface ProductVariant {
+    id?: number;
+    size: string;
+    price: number;
+    stock: number;
+}
+
 interface Product {
     id: number;
     name: string;
@@ -40,6 +47,9 @@ interface Product {
     main_image_url: string | null;
     status: string;
     in_stock: boolean;
+    variants?: ProductVariant[];
+    min_price?: number;
+    max_price?: number;
 }
 
 const ProductsPage = () => {
@@ -178,14 +188,30 @@ const ProductsPage = () => {
     };
 
     const addToCart = async (product: Product) => {
-        const size = selectedSizes[product.id] ?? 30;
+        const selectedSize = selectedSizes[product.id];
+        
+        // Nếu có variants, bắt buộc phải chọn size
+        if (product.variants && product.variants.length > 0 && !selectedSize) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Cảnh báo',
+                detail: 'Vui lòng chọn kích thước',
+                life: 3000
+            });
+            return;
+        }
+
+        const sizeStr = product.variants && product.variants.length > 0 
+            ? `${selectedSize}` 
+            : `${selectedSize ?? 30}cm`;
+        
         try {
-            const response = await cartAPI.addItem(product.id, 1, `${size}cm`);
-            if (response && response.items) {
+            const response = await cartAPI.addItem(product.id, 1, sizeStr);
+            if (response && response.id) {
                 // Update local cart state
                 setCart((prev) => ({
                     ...prev,
-                    [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size }
+                    [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size: selectedSize ?? 30 }
                 }));
                 // Update topbar cart count via context
                 if (response.total_quantity) {
@@ -194,27 +220,59 @@ const ProductsPage = () => {
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Đã thêm vào giỏ',
-                    detail: `${product.name} (Size ${size}) đã được thêm vào giỏ hàng`,
+                    detail: `${product.name} (Size ${sizeStr}) đã được thêm vào giỏ hàng`,
+                    life: 3000
+                });
+            } else if (response && response.error) {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Lỗi',
+                    detail: response.error || 'Không thể thêm sản phẩm vào giỏ hàng',
                     life: 3000
                 });
             }
-        } catch (error) {
+        } catch (error: any) {
+            console.error('Error adding to cart:', error);
             toast.current?.show({
                 severity: 'error',
                 summary: 'Lỗi',
-                detail: 'Không thể thêm sản phẩm vào giỏ hàng',
+                detail: error.message || 'Không thể thêm sản phẩm vào giỏ hàng',
                 life: 3000
             });
         }
     };
 
     const buyNow = (product: Product) => {
-        // Chuyển hướng đến trang thanh toán với sản phẩm này (gồm size)
-        const size = selectedSizes[product.id] ?? 30;
+        const selectedSize = selectedSizes[product.id];
+        
+        // Nếu có variants, bắt buộc phải chọn size
+        if (product.variants && product.variants.length > 0 && !selectedSize) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Cảnh báo',
+                detail: 'Vui lòng chọn kích thước',
+                life: 3000
+            });
+            return;
+        }
+
+        const size = product.variants && product.variants.length > 0 
+            ? `${selectedSize}` 
+            : `${selectedSize ?? 30}cm`;
+        
+        // Lấy giá từ variants nếu có
+        let price = product.price;
+        if (product.variants && product.variants.length > 0) {
+            const variant = product.variants.find(v => v.size === `${selectedSize}`);
+            if (variant) {
+                price = variant.price;
+            }
+        }
+
         const item = {
             id: product.id,
             name: product.name,
-            price: product.price,
+            price: price,
             quantity: 1,
             unit: product.unit,
             size: size,
@@ -236,7 +294,6 @@ const ProductsPage = () => {
                 <div className="product-card p-4 border-1 surface-border surface-card border-round h-full hover:shadow-3 transition-all transition-duration-300">
                     <div className="flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
                         <Tag value={product.category_name} severity="info" className="text-sm"></Tag>
-                        {!product.in_stock && <Tag value="Hết hàng" severity="warning" className="text-sm"></Tag>}
                     </div>
 
                     <div className="product-image-container mb-3 relative">
@@ -256,27 +313,63 @@ const ProductsPage = () => {
                         <div className="flex flex-column gap-3 mb-3">
                             <div className="text-sm text-600">
                                 <span className="font-semibold">Số lượng: </span>
-                                <span>{product.stock}</span>
+                                <span>
+                                    {selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
+                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock
+                                        : product.variants && product.variants.length > 0
+                                        ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                        : product.stock}
+                                </span>
                             </div>
                             <div className="text-sm text-600">
                                 <div className="mb-1">Chọn size:</div>
                                 <div className="flex gap-3">
-                                    {[30, 60, 90].map((s) => (
-                                        <label key={s} className="flex align-items-center gap-2">
-                                            <RadioButton
-                                                inputId={`size-${product.id}-${s}`}
-                                                name={`size-${product.id}`}
-                                                value={s}
-                                                onChange={(e) => setSelectedSizes((prev) => ({ ...prev, [product.id]: Number(e.value) }))}
-                                                checked={(selectedSizes[product.id] ?? 30) === s}
-                                            />
-                                            <span className="text-sm">{s} cm</span>
-                                        </label>
-                                    ))}
+                                    {product.variants && product.variants.length > 0 ? (
+                                        product.variants.map((variant) => (
+                                            <label key={variant.size} className="flex align-items-center gap-2">
+                                                <RadioButton
+                                                    inputId={`size-${product.id}-${variant.size}`}
+                                                    name={`size-${product.id}`}
+                                                    value={variant.size}
+                                                    onChange={(e) => setSelectedSizes((prev) => ({ ...prev, [product.id]: e.value as any }))}
+                                                    checked={`${selectedSizes[product.id] ?? ''}` === variant.size}
+                                                    disabled={variant.stock === 0}
+                                                />
+                                                <span className="text-sm">{variant.size}</span>
+                                            </label>
+                                        ))
+                                    ) : (
+                                        [30, 60, 90].map((s) => (
+                                            <label key={s} className="flex align-items-center gap-2">
+                                                <RadioButton
+                                                    inputId={`size-${product.id}-${s}`}
+                                                    name={`size-${product.id}`}
+                                                    value={s}
+                                                    onChange={(e) => setSelectedSizes((prev) => ({ ...prev, [product.id]: Number(e.value) }))}
+                                                    checked={(selectedSizes[product.id] ?? 30) === s}
+                                                />
+                                                <span className="text-sm">{s} cm</span>
+                                            </label>
+                                        ))
+                                    )}
                                 </div>
                             </div>
                             <div className="flex align-items-baseline gap-3">
-                                <div className="text-2xl font-bold text-primary">{new Intl.NumberFormat('vi-VN').format(product.price)} VND</div>
+                                <div className="text-2xl font-bold text-primary">
+                                    {product.variants && product.variants.length >= 2 ? (
+                                        selectedSizes[product.id] && product.variants.find(v => v.size === `${selectedSizes[product.id]}`)
+                                            ? `${new Intl.NumberFormat('vi-VN').format(product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.price ?? 0)} VND`
+                                            : product.min_price && product.max_price && product.min_price === product.max_price
+                                            ? `${new Intl.NumberFormat('vi-VN').format(product.min_price)} VND`
+                                            : `${new Intl.NumberFormat('vi-VN').format(product.min_price ?? product.price)} - ${new Intl.NumberFormat('vi-VN').format(product.max_price ?? product.price)} VND`
+                                    ) : selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`) ? (
+                                        `${new Intl.NumberFormat('vi-VN').format(product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.price ?? product.price)} VND`
+                                    ) : product.variants && product.variants.length === 1 && product.variants[0]?.price ? (
+                                        `${new Intl.NumberFormat('vi-VN').format(product.variants[0].price)} VND`
+                                    ) : (
+                                        `${new Intl.NumberFormat('vi-VN').format(product.price)} VND`
+                                    )}
+                                </div>
                                 <div className="text-sm text-500">Đã bán: <span className="font-semibold text-900">{product.sold_count}</span></div>
                             </div>
                         </div>
@@ -287,11 +380,10 @@ const ProductsPage = () => {
                                 label="Mua Ngay" 
                                 icon="pi pi-flash" 
                                 className="flex-1"
-                                disabled={!product.in_stock}
                                 onClick={() => buyNow(product)}
-                                style={{ backgroundColor: '#ff1493', borderColor: '#ff1493', color: 'white' }}
+                                style={{ backgroundColor: '#ff1493', borderColor: '#ff1493', color: 'white', cursor: 'pointer', opacity: 1 }}
                             />
-                            <Button icon="pi pi-shopping-cart" className="p-button-rounded" disabled={!product.in_stock} onClick={() => addToCart(product)} tooltip="Thêm vào giỏ" tooltipOptions={{ position: 'top' }} />
+                            <Button icon="pi pi-shopping-cart" className="p-button-rounded" onClick={() => addToCart(product)} tooltip="Thêm vào giỏ" tooltipOptions={{ position: 'top' }} style={{ cursor: 'pointer', opacity: 1 }} />
                         </div>
 
                         {cart[product.id] && (

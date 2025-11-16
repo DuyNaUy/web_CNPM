@@ -194,6 +194,48 @@ class Product(models.Model):
         return self.stock > 0
 
 
+class ProductVariant(models.Model):
+    """Model cho biến thể sản phẩm (kích thước khác nhau)"""
+    SIZE_CHOICES = [
+        ('30cm', '30cm'),
+        ('60cm', '60cm'),
+        ('90cm', '90cm')
+    ]
+    
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='variants',
+        verbose_name='Sản phẩm'
+    )
+    size = models.CharField(
+        max_length=20,
+        choices=SIZE_CHOICES,
+        verbose_name='Kích thước'
+    )
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Giá bán'
+    )
+    stock = models.IntegerField(
+        default=0,
+        validators=[MinValueValidator(0)],
+        verbose_name='Số lượng tồn kho'
+    )
+    
+    class Meta:
+        db_table = 'product_variants'
+        verbose_name = 'Biến thể sản phẩm'
+        verbose_name_plural = 'Biến thể sản phẩm'
+        unique_together = ['product', 'size']
+        ordering = ['product', 'size']
+    
+    def __str__(self):
+        return f"{self.product.name} - {self.size}"
+
+
 class ProductImage(models.Model):
     """Model riêng để lưu nhiều ảnh cho sản phẩm"""
     product = models.ForeignKey(
