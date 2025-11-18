@@ -84,7 +84,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'food_store_db',
+        'NAME': 'web_teddy_db',
         'USER': 'root',
         'PASSWORD': '',  # Thay bằng mật khẩu MySQL của bạn
         'HOST': 'localhost',

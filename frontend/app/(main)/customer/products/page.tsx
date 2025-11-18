@@ -356,19 +356,32 @@ const ProductsPage = () => {
                             </div>
                             <div className="flex align-items-baseline gap-3">
                                 <div className="text-2xl font-bold text-primary">
-                                    {product.variants && product.variants.length >= 2 ? (
-                                        selectedSizes[product.id] && product.variants.find(v => v.size === `${selectedSizes[product.id]}`)
-                                            ? `${new Intl.NumberFormat('vi-VN').format(product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.price ?? 0)} VND`
-                                            : product.min_price && product.max_price && product.min_price === product.max_price
-                                            ? `${new Intl.NumberFormat('vi-VN').format(product.min_price)} VND`
-                                            : `${new Intl.NumberFormat('vi-VN').format(product.min_price ?? product.price)} - ${new Intl.NumberFormat('vi-VN').format(product.max_price ?? product.price)} VND`
-                                    ) : selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`) ? (
-                                        `${new Intl.NumberFormat('vi-VN').format(product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.price ?? product.price)} VND`
-                                    ) : product.variants && product.variants.length === 1 && product.variants[0]?.price ? (
-                                        `${new Intl.NumberFormat('vi-VN').format(product.variants[0].price)} VND`
-                                    ) : (
-                                        `${new Intl.NumberFormat('vi-VN').format(product.price)} VND`
-                                    )}
+                                    {(() => {
+                                        // Nếu đã chọn size, hiển thị giá của size đó
+                                        if (selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)) {
+                                            const selectedVariant = product.variants.find(v => v.size === `${selectedSizes[product.id]}`);
+                                            return `${new Intl.NumberFormat('vi-VN').format(selectedVariant?.price ?? 0)} VND`;
+                                        }
+                                        
+                                        // Nếu có variants, kiểm tra xem có bao nhiêu giá khác nhau
+                                        if (product.variants && product.variants.length > 0) {
+                                            const prices = product.variants.map(v => v.price).filter(p => p > 0);
+                                            const uniquePrices = Array.from(new Set(prices));
+                                            
+                                            // Nếu chỉ có 1 giá duy nhất, hiển thị giá đó
+                                            if (uniquePrices.length === 1) {
+                                                return `${new Intl.NumberFormat('vi-VN').format(uniquePrices[0])} VND`;
+                                            }
+                                            
+                                            // Nếu có 2 giá trở lên, hiển thị min - max
+                                            if (uniquePrices.length >= 2 && product.min_price && product.max_price) {
+                                                return `${new Intl.NumberFormat('vi-VN').format(product.min_price)} - ${new Intl.NumberFormat('vi-VN').format(product.max_price)} VND`;
+                                            }
+                                        }
+                                        
+                                        // Fallback về giá mặc định
+                                        return `${new Intl.NumberFormat('vi-VN').format(product.price)} VND`;
+                                    })()}
                                 </div>
                                 <div className="text-sm text-500">Đã bán: <span className="font-semibold text-900">{product.sold_count}</span></div>
                             </div>

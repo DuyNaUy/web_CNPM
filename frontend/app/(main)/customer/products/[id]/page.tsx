@@ -19,6 +19,14 @@ interface ProductVariant {
     stock: number;
 }
 
+interface ProductImage {
+    id: number;
+    image: string;
+    image_url: string;
+    is_main: boolean;
+    order: number;
+}
+
 interface Product {
     id: number;
     name: string;
@@ -33,6 +41,8 @@ interface Product {
     variants?: ProductVariant[];
     min_price?: number;
     max_price?: number;
+    unit?: string;
+    product_images?: ProductImage[];
 }
 
 const ProductDetailPage = ({ params }: { params: { id: string } }) => {
@@ -52,6 +62,26 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                 console.log('Product API Response:', resp);
                 const p = resp && resp.data ? resp.data : resp;
                 console.log('Normalized data:', p);
+                
+                // Build image URLs array: main_image first, then product_images
+                let imageUrls: string[] = [];
+                
+                // Always add main_image_url first if it exists
+                if (p.main_image_url) {
+                    imageUrls.push(p.main_image_url);
+                }
+                
+                // Then add product_images (additional images)
+                if (p.product_images && Array.isArray(p.product_images) && p.product_images.length > 0) {
+                    const additionalImages = p.product_images.map((img: any) => img.image_url);
+                    imageUrls = [...imageUrls, ...additionalImages];
+                }
+                
+                // Final fallback to placeholder if no images at all
+                if (imageUrls.length === 0) {
+                    imageUrls = ['/demo/images/product/placeholder.png'];
+                }
+                
                 const normalized: Product = {
                     id: Number(p.id),
                     name: p.name || p.title || '',
@@ -60,12 +90,14 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                     oldPrice: p.old_price || p.oldPrice,
                     stock: Number(p.stock || p.quantity || 0),
                     description: p.description || p.short_description || '',
-                    images: Array.isArray(p.images) && p.images.length ? p.images : p.main_image_url ? [p.main_image_url] : p.main_image ? [p.main_image] : [],
+                    images: imageUrls,
                     sold_count: Number(p.sold_count || p.soldCount || 0),
                     detailDescription: p.detail_description || p.detailDescription || p.full_description || '',
                     variants: p.variants || [],
                     min_price: p.min_price,
-                    max_price: p.max_price
+                    max_price: p.max_price,
+                    unit: p.unit || '30cm',
+                    product_images: p.product_images || []
                 };
                 console.log('Normalized Product:', normalized);
                 setProduct(normalized);

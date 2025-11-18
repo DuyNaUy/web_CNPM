@@ -243,7 +243,7 @@ const OrdersPage = () => {
                     <Dialog visible={orderDialog} style={{ width: '70rem' }} breakpoints={{ '960px': '75vw', '641px': '90vw' }} header={`Chi Tiết Đơn Hàng - ${order?.order_code}`} modal className="p-fluid" footer={orderDialogFooter} onHide={hideDialog} maximizable>
                         {order && (
                             <div className="grid">
-                                {/* Thông tin đơn hàng */}
+                                {/* Thông tin đơn hàng */} 
                                 <div className="col-12 md:col-6">
                                     <div className="surface-100 p-4 border-round mb-3">
                                         <h6 className="mt-0 mb-3 text-primary">Thông Tin Đơn Hàng</h6>

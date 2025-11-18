@@ -28,10 +28,10 @@ const ReportsPage = () => {
         datasets: [
             {
                 label: 'Doanh thu (triệu VNĐ)',
-                data: [65, 59, 80, 81, 56, 95],
+                data: [45, 62, 78, 85, 92, 105],
                 fill: false,
-                backgroundColor: '#42A5F5',
-                borderColor: '#42A5F5',
+                backgroundColor: '#FF69B4',
+                borderColor: '#FF69B4',
                 tension: 0.4
             }
         ]
@@ -43,20 +43,20 @@ const ReportsPage = () => {
         datasets: [
             {
                 label: 'Số đơn hàng',
-                data: [120, 150, 180, 140],
-                backgroundColor: '#66BB6A',
-                borderColor: '#66BB6A'
+                data: [85, 110, 125, 95],
+                backgroundColor: '#FFB6C1',
+                borderColor: '#FFB6C1'
             }
         ]
     };
 
     // Biểu đồ danh mục sản phẩm
     const categoryData: ChartData = {
-        labels: ['Rau Củ Quả', 'Thịt Tươi', 'Hải Sản', 'Trứng & Sữa', 'Gạo & Ngũ Cốc'],
+        labels: ['Gấu 30cm', 'Gấu 60cm', 'Gấu 90cm', 'Gấu Đặc Biệt', 'Bộ Sưu Tập'],
         datasets: [
             {
-                data: [300, 250, 200, 180, 150],
-                backgroundColor: ['#42A5F5', '#66BB6A', '#FFA726', '#26C6DA', '#AB47BC']
+                data: [280, 320, 250, 180, 160],
+                backgroundColor: ['#FF69B4', '#FFB6C1', '#FF1493', '#C71585', '#DB7093']
             }
         ]
     };
@@ -136,11 +136,11 @@ const ReportsPage = () => {
     }, [layoutConfig.colorScheme]);
 
     const topProducts = [
-        { rank: 1, name: 'Rau Củ Tươi', category: 'Rau Củ Quả', sold: 450, revenue: 11250000 },
-        { rank: 2, name: 'Thịt Bò Úc', category: 'Thịt Tươi', sold: 150, revenue: 52500000 },
-        { rank: 3, name: 'Tôm Sú Sống', category: 'Hải Sản', sold: 120, revenue: 33600000 },
-        { rank: 4, name: 'Trứng Gà Organic', category: 'Trứng & Sữa', sold: 300, revenue: 19500000 },
-        { rank: 5, name: 'Gạo ST25', category: 'Gạo & Ngũ Cốc', sold: 200, revenue: 24000000 }
+        { rank: 1, name: 'Gấu Bông Màu Hồng 60cm', category: 'Gấu 60cm', sold: 285, revenue: 42750000 },
+        { rank: 2, name: 'Gấu Bông Nâu 30cm', category: 'Gấu 30cm', sold: 320, revenue: 25600000 },
+        { rank: 3, name: 'Gấu Bông Trắng 90cm', category: 'Gấu 90cm', sold: 145, revenue: 43500000 },
+        { rank: 4, name: 'Bộ Sưu Tập 3 Gấu', category: 'Bộ Sưu Tập', sold: 98, revenue: 29400000 },
+        { rank: 5, name: 'Gấu Bông Kỳ Lân 60cm', category: 'Gấu Đặc Biệt', sold: 112, revenue: 33600000 }
     ];
 
     const formatCurrency = (value: number) => {
@@ -151,7 +151,7 @@ const ReportsPage = () => {
         <div className="grid">
             <div className="col-12">
                 <div className="card">
-                    <h5>Thống Kê & Báo Cáo</h5>
+                    <h5>Thống Kê & Báo Cáo - Web_TEDDY</h5>
                     <div className="grid">
                         <div className="col-12 md:col-6">
                             <label htmlFor="reportType">Loại báo cáo</label>
@@ -183,13 +183,13 @@ const ReportsPage = () => {
                     <div className="flex justify-content-between mb-3">
                         <div>
                             <span className="block text-500 font-medium mb-3">Doanh Thu Tháng Này</span>
-                            <div className="text-900 font-medium text-xl">85.500.000 ₫</div>
+                            <div className="text-900 font-medium text-xl">125.300.000 ₫</div>
                         </div>
-                        <div className="flex align-items-center justify-content-center bg-blue-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
-                            <i className="pi pi-dollar text-blue-500 text-xl" />
+                        <div className="flex align-items-center justify-content-center bg-pink-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
+                            <i className="pi pi-dollar text-pink-500 text-xl" />
                         </div>
                     </div>
-                    <span className="text-green-500 font-medium">+12% </span>
+                    <span className="text-green-500 font-medium">+15% </span>
                     <span className="text-500">so với tháng trước</span>
                 </div>
             </div>
@@ -199,13 +199,13 @@ const ReportsPage = () => {
                     <div className="flex justify-content-between mb-3">
                         <div>
                             <span className="block text-500 font-medium mb-3">Đơn Hàng</span>
-                            <div className="text-900 font-medium text-xl">590</div>
+                            <div className="text-900 font-medium text-xl">415</div>
                         </div>
-                        <div className="flex align-items-center justify-content-center bg-orange-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
-                            <i className="pi pi-shopping-cart text-orange-500 text-xl" />
+                        <div className="flex align-items-center justify-content-center bg-purple-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
+                            <i className="pi pi-shopping-cart text-purple-500 text-xl" />
                         </div>
                     </div>
-                    <span className="text-green-500 font-medium">+18% </span>
+                    <span className="text-green-500 font-medium">+22% </span>
                     <span className="text-500">so với tháng trước</span>
                 </div>
             </div>
@@ -215,13 +215,13 @@ const ReportsPage = () => {
                     <div className="flex justify-content-between mb-3">
                         <div>
                             <span className="block text-500 font-medium mb-3">Khách Hàng Mới</span>
-                            <div className="text-900 font-medium text-xl">125</div>
+                            <div className="text-900 font-medium text-xl">87</div>
                         </div>
-                        <div className="flex align-items-center justify-content-center bg-cyan-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
-                            <i className="pi pi-users text-cyan-500 text-xl" />
+                        <div className="flex align-items-center justify-content-center bg-red-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
+                            <i className="pi pi-users text-red-500 text-xl" />
                         </div>
                     </div>
-                    <span className="text-green-500 font-medium">+8% </span>
+                    <span className="text-green-500 font-medium">+10% </span>
                     <span className="text-500">so với tháng trước</span>
                 </div>
             </div>
@@ -231,13 +231,13 @@ const ReportsPage = () => {
                     <div className="flex justify-content-between mb-3">
                         <div>
                             <span className="block text-500 font-medium mb-3">Tỷ Lệ Hoàn Thành</span>
-                            <div className="text-900 font-medium text-xl">95.5%</div>
+                            <div className="text-900 font-medium text-xl">97.8%</div>
                         </div>
-                        <div className="flex align-items-center justify-content-center bg-purple-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
-                            <i className="pi pi-check-circle text-purple-500 text-xl" />
+                        <div className="flex align-items-center justify-content-center bg-teal-100 border-round" style={{ width: '2.5rem', height: '2.5rem' }}>
+                            <i className="pi pi-check-circle text-teal-500 text-xl" />
                         </div>
                     </div>
-                    <span className="text-green-500 font-medium">+2.5% </span>
+                    <span className="text-green-500 font-medium">+3.2% </span>
                     <span className="text-500">so với tháng trước</span>
                 </div>
             </div>
@@ -258,18 +258,18 @@ const ReportsPage = () => {
 
             <div className="col-12 xl:col-6">
                 <div className="card">
-                    <h5>Doanh Thu Theo Danh Mục</h5>
+                    <h5>Doanh Thu Theo Kích Thước Gấu</h5>
                     <Chart type="pie" data={categoryData} />
                 </div>
             </div>
 
             <div className="col-12 xl:col-6">
                 <div className="card">
-                    <h5>Top 5 Sản Phẩm Bán Chạy</h5>
+                    <h5>Top 5 Gấu Bông Bán Chạy</h5>
                     <DataTable value={topProducts} responsiveLayout="scroll">
                         <Column field="rank" header="Hạng" style={{ width: '10%' }}></Column>
                         <Column field="name" header="Sản phẩm" style={{ width: '30%' }}></Column>
-                        <Column field="category" header="Danh mục" style={{ width: '25%' }}></Column>
+                        <Column field="category" header="Kích thước" style={{ width: '25%' }}></Column>
                         <Column field="sold" header="Đã bán" style={{ width: '15%' }}></Column>
                         <Column field="revenue" header="Doanh thu" body={(data) => formatCurrency(data.revenue)} style={{ width: '20%' }}></Column>
                     </DataTable>

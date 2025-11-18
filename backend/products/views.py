@@ -184,9 +184,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
     
     @action(detail=True, methods=['post'])
-    def upload_image(self, request, pk=None):
+    def upload_image(self, request, slug=None):
         """Upload ảnh chính cho sản phẩm"""
-        product = self.get_object()
+        try:
+            product = self.get_object()
+        except Exception as e:
+            return Response(
+                {'error': f'Không tìm thấy sản phẩm: {str(e)}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         if 'image' not in request.FILES:
             return Response(
@@ -194,19 +200,31 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        product.main_image = request.FILES['image']
-        product.save()
-        
-        serializer = ProductSerializer(product, context={'request': request})
-        return Response({
-            'message': 'Upload ảnh thành công',
-            'data': serializer.data
-        })
+        try:
+            product.main_image = request.FILES['image']
+            product.save()
+            
+            serializer = ProductSerializer(product, context={'request': request})
+            return Response({
+                'message': 'Upload ảnh thành công',
+                'data': serializer.data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Lỗi khi upload ảnh: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=True, methods=['post'])
-    def add_images(self, request, pk=None):
+    def add_images(self, request, slug=None):
         """Thêm nhiều ảnh phụ cho sản phẩm"""
-        product = self.get_object()
+        try:
+            product = self.get_object()
+        except Exception as e:
+            return Response(
+                {'error': f'Không tìm thấy sản phẩm: {str(e)}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         images = request.FILES.getlist('images')
         if not images:
@@ -215,25 +233,37 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        created_images = []
-        for idx, image_file in enumerate(images):
-            product_image = ProductImage.objects.create(
-                product=product,
-                image=image_file,
-                order=idx
+        try:
+            created_images = []
+            for idx, image_file in enumerate(images):
+                product_image = ProductImage.objects.create(
+                    product=product,
+                    image=image_file,
+                    order=idx
+                )
+                created_images.append(product_image)
+            
+            serializer = ProductImageSerializer(created_images, many=True, context={'request': request})
+            return Response({
+                'message': f'Đã thêm {len(created_images)} ảnh',
+                'data': serializer.data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Lỗi khi thêm ảnh: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            created_images.append(product_image)
-        
-        serializer = ProductImageSerializer(created_images, many=True, context={'request': request})
-        return Response({
-            'message': f'Đã thêm {len(created_images)} ảnh',
-            'data': serializer.data
-        })
     
     @action(detail=True, methods=['delete'], url_path='delete_image/(?P<image_id>[^/.]+)')
-    def delete_image(self, request, pk=None, image_id=None):
+    def delete_image(self, request, slug=None, image_id=None):
         """Xóa một ảnh phụ của sản phẩm"""
-        product = self.get_object()
+        try:
+            product = self.get_object()
+        except Exception as e:
+            return Response(
+                {'error': f'Không tìm thấy sản phẩm: {str(e)}'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         
         try:
             product_image = ProductImage.objects.get(id=image_id, product=product)
@@ -247,9 +277,14 @@ class ProductViewSet(viewsets.ModelViewSet):
                 {'error': 'Không tìm thấy ảnh'},
                 status=status.HTTP_404_NOT_FOUND
             )
+        except Exception as e:
+            return Response(
+                {'error': f'Lỗi khi xóa ảnh: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=True, methods=['post'])
-    def toggle_featured(self, request, pk=None):
+    def toggle_featured(self, request, slug=None):
         """Chuyển đổi trạng thái sản phẩm nổi bật (deprecated - không còn sử dụng)"""
         return Response(
             {'message': 'Tính năng sản phẩm nổi bật đã bị loại bỏ'},
@@ -257,22 +292,28 @@ class ProductViewSet(viewsets.ModelViewSet):
         )
     
     @action(detail=True, methods=['post'])
-    def toggle_status(self, request, pk=None):
+    def toggle_status(self, request, slug=None):
         """Chuyển đổi trạng thái sản phẩm"""
-        product = self.get_object()
-        
-        if product.status == 'active':
-            product.status = 'inactive'
-        else:
-            product.status = 'active'
-        
-        product.save()
-        
-        serializer = ProductSerializer(product, context={'request': request})
-        return Response({
-            'message': f'Đã chuyển trạng thái sang {product.get_status_display()}',
-            'data': serializer.data
-        })
+        try:
+            product = self.get_object()
+            
+            if product.status == 'active':
+                product.status = 'inactive'
+            else:
+                product.status = 'active'
+            
+            product.save()
+            
+            serializer = ProductSerializer(product, context={'request': request})
+            return Response({
+                'message': f'Đã chuyển trạng thái sang {product.get_status_display()}',
+                'data': serializer.data
+            })
+        except Exception as e:
+            return Response(
+                {'error': f'Lỗi khi chuyển trạng thái: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     @action(detail=False, methods=['get'])
     def low_stock(self, request):

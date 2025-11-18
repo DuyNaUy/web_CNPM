@@ -505,7 +505,8 @@ const ProductsPage = () => {
     const onGallerySelect = (e: any) => {
         const files = e.files;
         if (files && files.length > 0) {
-            setAdditionalImages([...additionalImages, ...files]);
+            // Append new files to existing ones
+            setAdditionalImages(prev => [...prev, ...files]);
         }
     };
 
@@ -987,11 +988,12 @@ const ProductsPage = () => {
                                                         accept="image/*"
                                                         maxFileSize={5000000}
                                                         onSelect={onGallerySelect}
+                                                        customUpload
+                                                        auto={false}
                                                         emptyTemplate={<p className="m-0">Kéo thả ảnh vào đây hoặc click để chọn nhiều ảnh.</p>}
                                                         chooseLabel="Chọn ảnh"
                                                         uploadLabel="Tải lên"
                                                         cancelLabel="Hủy"
-                                                        auto={false}
                                                     />
                                                     <small className="block mt-2 text-500">Có thể chọn nhiều ảnh. Định dạng: JPG, PNG, GIF. Kích thước tối đa: 5MB/ảnh</small>
                                                 </div>
