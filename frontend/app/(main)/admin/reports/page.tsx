@@ -4,16 +4,20 @@ import { Button } from 'primereact/button';
 import { Chart } from 'primereact/chart';
 import { Column } from 'primereact/column';
 import { DataTable } from 'primereact/datatable';
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState, useRef } from 'react';
 import { LayoutContext } from '../../../../layout/context/layoutcontext';
 import { ChartData, ChartOptions } from 'chart.js';
 import { Calendar } from 'primereact/calendar';
 import { Dropdown } from 'primereact/dropdown';
+import { Toast } from 'primereact/toast';
+import { orderAPI } from '@/services/api';
 
 const ReportsPage = () => {
     const [selectedDateRange, setSelectedDateRange] = useState<Date[] | null>(null);
     const [reportType, setReportType] = useState('revenue');
+    const [loading, setLoading] = useState(false);
     const { layoutConfig } = useContext(LayoutContext);
+    const toast = useRef<Toast>(null);
 
     const reportTypes = [
         { label: 'Doanh thu', value: 'revenue' },
@@ -147,8 +151,59 @@ const ReportsPage = () => {
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
     };
 
+    const handleExportExcel = async () => {
+        try {
+            setLoading(true);
+            
+            // Validate date range
+            let startDate = '';
+            let endDate = '';
+            if (selectedDateRange && selectedDateRange.length === 2) {
+                if (selectedDateRange[0]) {
+                    startDate = selectedDateRange[0].toISOString().split('T')[0];
+                }
+                if (selectedDateRange[1]) {
+                    endDate = selectedDateRange[1].toISOString().split('T')[0];
+                }
+            }
+            
+            await orderAPI.exportExcel(reportType, startDate, endDate);
+            toast.current?.show({ severity: 'success', summary: 'Thành công', detail: 'Đã xuất Excel', life: 3000 });
+        } catch (error: any) {
+            toast.current?.show({ severity: 'error', summary: 'Lỗi', detail: error.message, life: 3000 });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleExportPDF = async () => {
+        try {
+            setLoading(true);
+            
+            // Validate date range
+            let startDate = '';
+            let endDate = '';
+            if (selectedDateRange && selectedDateRange.length === 2) {
+                if (selectedDateRange[0]) {
+                    startDate = selectedDateRange[0].toISOString().split('T')[0];
+                }
+                if (selectedDateRange[1]) {
+                    endDate = selectedDateRange[1].toISOString().split('T')[0];
+                }
+            }
+            
+            await orderAPI.exportPDF(reportType, startDate, endDate);
+            toast.current?.show({ severity: 'success', summary: 'Thành công', detail: 'Đã xuất PDF', life: 3000 });
+        } catch (error: any) {
+            toast.current?.show({ severity: 'error', summary: 'Lỗi', detail: error.message, life: 3000 });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="grid">
+            <Toast ref={toast} />
             <div className="col-12">
                 <div className="card">
                     <h5>Thống Kê & Báo Cáo - Web_TEDDY</h5>
@@ -172,8 +227,8 @@ const ReportsPage = () => {
                         </div>
                     </div>
                     <div className="mt-3">
-                        <Button label="Xuất báo cáo Excel" icon="pi pi-download" className="mr-2" />
-                        <Button label="Xuất báo cáo PDF" icon="pi pi-file-pdf" severity="danger" />
+                        <Button label="Xuất báo cáo Excel" icon="pi pi-download" className="mr-2" onClick={handleExportExcel} loading={loading} />
+                        <Button label="Xuất báo cáo PDF" icon="pi pi-file-pdf" severity="danger" onClick={handleExportPDF} loading={loading} />
                     </div>
                 </div>
             </div>

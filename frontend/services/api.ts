@@ -463,6 +463,54 @@ export const orderAPI = {
 
     getStats: async () => {
         return await apiRequest('/orders/stats/');
+    },
+
+    exportExcel: async (reportType?: string, startDate?: string, endDate?: string) => {
+        const token = getAuthToken();
+        const params = new URLSearchParams();
+        if (reportType) params.append('report_type', reportType);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        
+        const url = `${API_BASE_URL}/orders/export_excel/${params.toString() ? '?' + params.toString() : ''}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Không thể xuất Excel');
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `bao_cao_${reportType || 'orders'}_${Date.now()}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
+    },
+
+    exportPDF: async (reportType?: string, startDate?: string, endDate?: string) => {
+        const token = getAuthToken();
+        const params = new URLSearchParams();
+        if (reportType) params.append('report_type', reportType);
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        
+        const url = `${API_BASE_URL}/orders/export_pdf/${params.toString() ? '?' + params.toString() : ''}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!response.ok) throw new Error('Không thể xuất PDF');
+        const blob = await response.blob();
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `bao_cao_${reportType || 'orders'}_${Date.now()}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(downloadUrl);
+        document.body.removeChild(a);
     }
 };
 

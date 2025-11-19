@@ -433,3 +433,371 @@ class OrderViewSet(viewsets.ViewSet):
             'completed_orders': completed_orders,
             'total_revenue': float(total_revenue),
         })
+    
+    @action(detail=False, methods=['get'])
+    def export_excel(self, request):
+        """Xuất báo cáo Excel"""
+        from django.http import HttpResponse
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        from datetime import datetime
+        from django.db.models import Sum, Count, Q
+        from products.models import Product
+        
+        # Get parameters
+        report_type = request.GET.get('report_type', 'revenue')
+        start_date = request.GET.get('start_date', '')
+        end_date = request.GET.get('end_date', '')
+        
+        wb = Workbook()
+        ws = wb.active
+        
+        header_fill = PatternFill(start_color="FF69B4", end_color="FF69B4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF", size=12)
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Filter orders by date range
+        orders_query = Order.objects.all()
+        if start_date:
+            orders_query = orders_query.filter(created_at__gte=start_date)
+        if end_date:
+            orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
+        
+        if report_type == 'revenue':
+            ws.title = "Doanh Thu"
+            ws.merge_cells('A1:F1')
+            ws['A1'] = 'BÁO CÁO DOANH THU - WEB_TEDDY'
+            ws['A1'].font = Font(bold=True, size=16)
+            ws['A1'].alignment = Alignment(horizontal="center")
+            
+            # Date range info
+            ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
+            ws['A2'].alignment = Alignment(horizontal="center")
+            
+            headers = ['Mã ĐH', 'Khách hàng', 'Ngày', 'Tổng tiền', 'Trạng thái', 'Thanh toán']
+            for col, header in enumerate(headers, start=1):
+                cell = ws.cell(row=4, column=col)
+                cell.value = header
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+                cell.border = border
+            
+            orders = orders_query.order_by('-created_at')
+            total_revenue = 0
+            for row, order in enumerate(orders, start=5):
+                ws.cell(row=row, column=1, value=order.order_code).border = border
+                ws.cell(row=row, column=2, value=order.full_name).border = border
+                ws.cell(row=row, column=3, value=order.created_at.strftime('%d/%m/%Y')).border = border
+                ws.cell(row=row, column=4, value=float(order.total_amount)).border = border
+                ws.cell(row=row, column=5, value=order.get_status_display()).border = border
+                ws.cell(row=row, column=6, value=order.get_payment_method_display()).border = border
+                total_revenue += float(order.total_amount)
+            
+            # Summary row
+            summary_row = len(orders) + 5
+            ws.cell(row=summary_row, column=1, value='TỔNG CỘNG').font = Font(bold=True)
+            ws.cell(row=summary_row, column=4, value=total_revenue).font = Font(bold=True)
+            
+            for col in ['A', 'B', 'C', 'D', 'E', 'F']:
+                ws.column_dimensions[col].width = 20
+        
+        elif report_type == 'orders':
+            ws.title = "Đơn Hàng"
+            ws.merge_cells('A1:G1')
+            ws['A1'] = 'BÁO CÁO ĐƠN HÀNG - WEB_TEDDY'
+            ws['A1'].font = Font(bold=True, size=16)
+            ws['A1'].alignment = Alignment(horizontal="center")
+            
+            ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
+            ws['A2'].alignment = Alignment(horizontal="center")
+            
+            headers = ['Mã ĐH', 'Khách hàng', 'SĐT', 'Địa chỉ', 'Tổng tiền', 'Trạng thái', 'Ngày']
+            for col, header in enumerate(headers, start=1):
+                cell = ws.cell(row=4, column=col)
+                cell.value = header
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+                cell.border = border
+            
+            orders = orders_query.order_by('-created_at')
+            for row, order in enumerate(orders, start=5):
+                ws.cell(row=row, column=1, value=order.order_code).border = border
+                ws.cell(row=row, column=2, value=order.full_name).border = border
+                ws.cell(row=row, column=3, value=order.phone).border = border
+                ws.cell(row=row, column=4, value=f"{order.address}, {order.district}, {order.city}").border = border
+                ws.cell(row=row, column=5, value=float(order.total_amount)).border = border
+                ws.cell(row=row, column=6, value=order.get_status_display()).border = border
+                ws.cell(row=row, column=7, value=order.created_at.strftime('%d/%m/%Y')).border = border
+            
+            for col in ['A', 'B', 'C', 'E', 'F', 'G']:
+                ws.column_dimensions[col].width = 20
+            ws.column_dimensions['D'].width = 40
+        
+        elif report_type == 'products':
+            ws.title = "Sản Phẩm Bán Chạy"
+            ws.merge_cells('A1:F1')
+            ws['A1'] = 'BÁO CÁO SẢN PHẨM BÁN CHẠY - WEB_TEDDY'
+            ws['A1'].font = Font(bold=True, size=16)
+            ws['A1'].alignment = Alignment(horizontal="center")
+            
+            ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
+            ws['A2'].alignment = Alignment(horizontal="center")
+            
+            headers = ['STT', 'Sản phẩm', 'Danh mục', 'Đã bán', 'Giá', 'Doanh thu']
+            for col, header in enumerate(headers, start=1):
+                cell = ws.cell(row=4, column=col)
+                cell.value = header
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+                cell.border = border
+            
+            # Get order items in date range
+            order_items_query = OrderItem.objects.filter(order__in=orders_query)
+            product_stats = order_items_query.values('product__id', 'product__name', 'product__category__name').annotate(
+                total_sold=Sum('quantity'),
+                total_revenue=Sum('quantity') * Sum('product_price')
+            ).order_by('-total_sold')
+            
+            for row, stat in enumerate(product_stats[:50], start=5):
+                product = Product.objects.filter(id=stat['product__id']).first()
+                ws.cell(row=row, column=1, value=row-4).border = border
+                ws.cell(row=row, column=2, value=stat['product__name']).border = border
+                ws.cell(row=row, column=3, value=stat['product__category__name'] or 'N/A').border = border
+                ws.cell(row=row, column=4, value=stat['total_sold']).border = border
+                ws.cell(row=row, column=5, value=float(product.price) if product else 0).border = border
+                ws.cell(row=row, column=6, value=float(product.price * stat['total_sold']) if product else 0).border = border
+            
+            for col in ['A', 'C', 'D', 'E', 'F']:
+                ws.column_dimensions[col].width = 18
+            ws.column_dimensions['B'].width = 35
+        
+        elif report_type == 'customers':
+            ws.title = "Khách Hàng"
+            ws.merge_cells('A1:F1')
+            ws['A1'] = 'BÁO CÁO KHÁCH HÀNG - WEB_TEDDY'
+            ws['A1'].font = Font(bold=True, size=16)
+            ws['A1'].alignment = Alignment(horizontal="center")
+            
+            ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
+            ws['A2'].alignment = Alignment(horizontal="center")
+            
+            headers = ['Khách hàng', 'Email', 'SĐT', 'Số đơn', 'Tổng chi tiêu', 'Ngày đầu']
+            for col, header in enumerate(headers, start=1):
+                cell = ws.cell(row=4, column=col)
+                cell.value = header
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+                cell.border = border
+            
+            # Get customer statistics
+            customer_stats = orders_query.values('user__username', 'email', 'phone', 'user__date_joined').annotate(
+                order_count=Count('id'),
+                total_spent=Sum('total_amount')
+            ).order_by('-total_spent')
+            
+            for row, stat in enumerate(customer_stats, start=5):
+                ws.cell(row=row, column=1, value=stat['user__username'] or 'Khách').border = border
+                ws.cell(row=row, column=2, value=stat['email']).border = border
+                ws.cell(row=row, column=3, value=stat['phone']).border = border
+                ws.cell(row=row, column=4, value=stat['order_count']).border = border
+                ws.cell(row=row, column=5, value=float(stat['total_spent'])).border = border
+                ws.cell(row=row, column=6, value=stat['user__date_joined'].strftime('%d/%m/%Y') if stat['user__date_joined'] else 'N/A').border = border
+            
+            for col in ['A', 'B', 'C', 'D', 'E', 'F']:
+                ws.column_dimensions[col].width = 22
+        
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = f'attachment; filename=bao_cao_{report_type}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        wb.save(response)
+        return response
+    
+    @action(detail=False, methods=['get'])
+    def export_pdf(self, request):
+        """Xuất báo cáo PDF"""
+        from django.http import HttpResponse
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import inch
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from datetime import datetime
+        from django.db.models import Sum, Count
+        from products.models import Product
+        import io
+        
+        # Get parameters
+        report_type = request.GET.get('report_type', 'revenue')
+        start_date = request.GET.get('start_date', '')
+        end_date = request.GET.get('end_date', '')
+        
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Filter orders by date range
+        orders_query = Order.objects.all()
+        if start_date:
+            orders_query = orders_query.filter(created_at__gte=start_date)
+        if end_date:
+            orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
+        
+        if report_type == 'revenue':
+            title = Paragraph('<para align=center><b>BAO CAO DOANH THU - WEB_TEDDY</b></para>', styles['Title'])
+            elements.append(title)
+            date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
+            elements.append(date_range)
+            elements.append(Spacer(1, 0.3*inch))
+            
+            orders = orders_query.order_by('-created_at')[:100]
+            data = [['Ma DH', 'Khach hang', 'Ngay', 'Tong tien', 'Trang thai', 'Thanh toan']]
+            
+            total_revenue = 0
+            for order in orders:
+                data.append([
+                    order.order_code,
+                    order.full_name[:15],
+                    order.created_at.strftime('%d/%m/%y'),
+                    f'{order.total_amount:,.0f}',
+                    order.get_status_display()[:10],
+                    order.get_payment_method_display()[:10],
+                ])
+                total_revenue += float(order.total_amount)
+            
+            data.append(['', '', 'TONG CONG:', f'{total_revenue:,.0f}', '', ''])
+            
+            table = Table(data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FF69B4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTSIZE', (0, 1), (-1, -2), 7),
+                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, -1), (-1, -1), 9),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+        
+        elif report_type == 'orders':
+            title = Paragraph('<para align=center><b>BAO CAO DON HANG - WEB_TEDDY</b></para>', styles['Title'])
+            elements.append(title)
+            date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
+            elements.append(date_range)
+            elements.append(Spacer(1, 0.3*inch))
+            
+            orders = orders_query.order_by('-created_at')[:100]
+            data = [['Ma DH', 'Khach', 'SDT', 'Tong tien', 'TT', 'Ngay']]
+            
+            for order in orders:
+                data.append([
+                    order.order_code,
+                    order.full_name[:12],
+                    order.phone,
+                    f'{order.total_amount:,.0f}',
+                    order.get_status_display()[:10],
+                    order.created_at.strftime('%d/%m/%y')
+                ])
+            
+            table = Table(data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FF69B4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+        
+        elif report_type == 'products':
+            title = Paragraph('<para align=center><b>BAO CAO SAN PHAM BAN CHAY - WEB_TEDDY</b></para>', styles['Title'])
+            elements.append(title)
+            date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
+            elements.append(date_range)
+            elements.append(Spacer(1, 0.3*inch))
+            
+            order_items_query = OrderItem.objects.filter(order__in=orders_query)
+            product_stats = order_items_query.values('product__id', 'product__name', 'product__category__name').annotate(
+                total_sold=Sum('quantity')
+            ).order_by('-total_sold')[:50]
+            
+            data = [['STT', 'San pham', 'Danh muc', 'Da ban', 'Gia', 'Doanh thu']]
+            
+            for idx, stat in enumerate(product_stats, 1):
+                product = Product.objects.filter(id=stat['product__id']).first()
+                data.append([
+                    str(idx),
+                    stat['product__name'][:25],
+                    (stat['product__category__name'] or 'N/A')[:15],
+                    str(stat['total_sold']),
+                    f'{product.price:,.0f}' if product else '0',
+                    f'{(product.price * stat["total_sold"]):,.0f}' if product else '0'
+                ])
+            
+            table = Table(data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FF69B4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 8),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+        
+        elif report_type == 'customers':
+            title = Paragraph('<para align=center><b>BAO CAO KHACH HANG - WEB_TEDDY</b></para>', styles['Title'])
+            elements.append(title)
+            date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
+            elements.append(date_range)
+            elements.append(Spacer(1, 0.3*inch))
+            
+            customer_stats = orders_query.values('user__username', 'email', 'phone').annotate(
+                order_count=Count('id'),
+                total_spent=Sum('total_amount')
+            ).order_by('-total_spent')[:50]
+            
+            data = [['Khach hang', 'Email', 'SDT', 'So don', 'Tong chi tieu']]
+            
+            for stat in customer_stats:
+                data.append([
+                    (stat['user__username'] or 'Khach')[:15],
+                    stat['email'][:20],
+                    stat['phone'],
+                    str(stat['order_count']),
+                    f'{stat["total_spent"]:,.0f}'
+                ])
+            
+            table = Table(data, repeatRows=1)
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FF69B4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('FONTSIZE', (0, 1), (-1, -1), 7),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+        
+        elements.append(table)
+        doc.build(elements)
+        
+        pdf = buffer.getvalue()
+        buffer.close()
+        
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename=bao_cao_{report_type}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
+        response.write(pdf)
+        return response
