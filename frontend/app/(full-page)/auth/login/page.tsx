@@ -73,7 +73,7 @@ const LoginPage = () => {
                     if (userRole === 'admin') {
                         router.push('/admin/products');
                     } else {
-                        router.push('/customer/products');
+                        router.push('/customer');
                     }
                 }, 2000);
             } else {

@@ -10,3 +10,15 @@
 .layout-main {
     flex: 1 1 auto;
 }
+
+// Layout khi không có sidebar (customer)
+.layout-no-sidebar {
+    .layout-main-container {
+        padding-left: 2rem;
+        margin-left: 0 !important;
+    }
+
+    .layout-sidebar {
+        display: none;
+    }
+}

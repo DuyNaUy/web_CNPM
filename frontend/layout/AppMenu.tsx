@@ -14,7 +14,7 @@ const AppMenu = () => {
     // Admin menu - Full access
     const adminModel: AppMenuItem[] = [
         {
-            label: 'Quản Lý Hệ Thống (Admin)',
+            label: 'Quản Lý & Thống Kê',
             items: [
                 { label: 'Quản Lý Tài Khoản', icon: 'pi pi-fw pi-users', to: '/admin/accounts' },
                 { label: 'Quản Lý Danh Mục', icon: 'pi pi-fw pi-tags', to: '/admin/categories' },
@@ -33,21 +33,11 @@ const AppMenu = () => {
 
     return (
         <MenuProvider>
-            <div style={{ padding: '0.5rem' }} className="flex flex-column">
-                <div className="mb-2">
-                    <small className="text-600">Hiển thị dưới vai trò:</small>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                        <Button label="Admin" size="small" className={role === 'admin' ? 'p-button-raised' : ''} onClick={() => setRole('admin')} />
-                        <Button label="Khách" size="small" severity="secondary" className={role === 'customer' ? 'p-button-raised' : ''} onClick={() => setRole('customer')} />
-                    </div>
-                </div>
-
-                <ul className="layout-menu">
-                    {filteredModel.map((item, i) => {
-                        return !item?.seperator ? <AppMenuitem item={item} root={true} index={i} key={item.label} /> : <li className="menu-separator"></li>;
-                    })}
-                </ul>
-            </div>
+            <ul className="layout-menu">
+                {filteredModel.map((item, i) => {
+                    return !item?.seperator ? <AppMenuitem item={item} root={true} index={i} key={item.label} /> : <li className="menu-separator"></li>;
+                })}
+            </ul>
         </MenuProvider>
     );
 };

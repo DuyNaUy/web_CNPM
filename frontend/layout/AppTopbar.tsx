@@ -162,82 +162,138 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
         <>
             <Toast ref={toast} />
             <div className="layout-topbar">
-                <Link href="/" className="layout-topbar-logo">
+                <Link href={role === 'customer' ? '/customer' : '/'} className="layout-topbar-logo">
                     <img src="/layout/images/logo1.png" width="47.22px" height={'35px'} alt="logo" />
-                    <span className="hidden md:inline-block">{role === 'admin' ? 'TEDDY SHOP ADMIN' : 'TEDDY SHOP'}</span>
+                    <span className="hidden md:inline-block font-bold" style={{ fontSize: '1.2rem', color: role === 'admin' ? '#e91e63' : '#ff69b4' }}>
+                        {role === 'admin' ? 'TEDDY SHOP ADMIN' : 'TEDDY SHOP 🧸'}
+                    </span>
                 </Link>
 
-                <button ref={menubuttonRef} type="button" className="p-link layout-menu-button layout-topbar-button" onClick={onMenuToggle}>
-                    <i className="pi pi-bars" />
-                </button>
+                {/* Nút menu 3 gạch - chỉ hiển thị cho admin */}
+                {role === 'admin' && (
+                    <button ref={menubuttonRef} type="button" className="p-link layout-menu-button layout-topbar-button" onClick={onMenuToggle}>
+                        <i className="pi pi-bars" />
+                    </button>
+                )}
 
                 {/* Menu chức năng khách hàng - hiển thị khi role là customer */}
                 {role === 'customer' && (
-                    <div className="flex-1 flex align-items-center justify-content-center gap-3">
-                        <div className="hidden md:flex align-items-center" style={{ minWidth: '200px' }}>
+                    <div className="flex-1 flex align-items-center justify-content-center gap-2 mx-3">
+                        <Link href="/customer" className="p-link layout-topbar-button hover:surface-200 border-round transition-colors transition-duration-300" style={{ padding: '0.75rem 1rem' }}>
+                            <i className="pi pi-home" style={{ fontSize: '1.1rem', color: '#ff69b4' }}></i>
+                            <span className="hidden lg:inline-block ml-2 font-semibold" style={{ color: '#333' }}>Trang Chủ</span>
+                        </Link>
+                        
+                        <div className="hidden md:flex align-items-center" style={{ minWidth: '220px' }}>
                             <Dropdown
                                 value={selectedCategory}
                                 onChange={(e) => handleCategoryChange(e.value)}
                                 options={[
-                                    { label: 'Tất cả sản phẩm', value: null },
+                                    { label: '🎯 Tất cả sản phẩm', value: null },
                                     ...categories.map((cat) => ({
                                         label: cat.name,
                                         value: cat.id
                                     }))
                                 ]}
-                                placeholder="Chọn danh mục"
+                                placeholder="📂 Chọn danh mục"
                                 className="w-full"
                                 style={{
                                     backgroundColor: '#fff',
-                                    borderColor: '#ffddeb',
-                                    color: '#333'
+                                    borderColor: '#ff69b4',
+                                    borderWidth: '2px',
+                                    borderRadius: '10px',
+                                    color: '#333',
+                                    fontWeight: '500'
                                 }}
                             />
                         </div>
-                        <Link href="/customer/products" className="p-link layout-topbar-button">
-                            <i className="pi pi-shopping-bag"></i>
-                            <span className="hidden md:inline-block ml-2">Sản Phẩm</span>
+                        
+                        <Link href="/customer/products" className="p-link layout-topbar-button hover:surface-200 border-round transition-colors transition-duration-300" style={{ padding: '0.75rem 1rem' }}>
+                            <i className="pi pi-shopping-bag" style={{ fontSize: '1.1rem', color: '#ff69b4' }}></i>
+                            <span className="hidden lg:inline-block ml-2 font-semibold" style={{ color: '#333' }}>Sản Phẩm</span>
                         </Link>
-                        <Link href="/customer/cart" className="p-link layout-topbar-button p-overlay-badge">
-                            <i className="pi pi-shopping-cart"></i>
-                            {cartCount > 0 && <Badge value={cartCount} severity="danger"></Badge>}
-                            <span className="hidden md:inline-block ml-2">Giỏ Hàng</span>
+                        
+                        <Link href="/customer/cart" className="p-link layout-topbar-button p-overlay-badge hover:surface-200 border-round transition-colors transition-duration-300" style={{ padding: '0.75rem 1rem' }}>
+                            <i className="pi pi-shopping-cart" style={{ fontSize: '1.1rem', color: '#ff69b4' }}></i>
+                            {cartCount > 0 && <Badge value={cartCount} severity="danger" style={{ minWidth: '1.5rem', minHeight: '1.5rem', fontSize: '0.75rem' }}></Badge>}
+                            <span className="hidden lg:inline-block ml-2 font-semibold" style={{ color: '#333' }}>Giỏ Hàng</span>
                         </Link>
-                        <Link href="/customer/orders" className="p-link layout-topbar-button">
-                            <i className="pi pi-list"></i>
-                            <span className="hidden md:inline-block ml-2">Đơn Hàng</span>
+                        
+                        <Link href="/customer/orders" className="p-link layout-topbar-button hover:surface-200 border-round transition-colors transition-duration-300" style={{ padding: '0.75rem 1rem' }}>
+                            <i className="pi pi-list" style={{ fontSize: '1.1rem', color: '#ff69b4' }}></i>
+                            <span className="hidden lg:inline-block ml-2 font-semibold" style={{ color: '#333' }}>Đơn Hàng</span>
                         </Link>
                     </div>
                 )}
 
-                <button ref={topbarmenubuttonRef} type="button" className="p-link layout-topbar-menu-button layout-topbar-button" onClick={showProfileSidebar}>
-                    <Avatar icon="pi pi-user" size="normal" shape="circle" style={{ backgroundColor: 'var(--primary-color)', color: '#fff', width: '32px', height: '32px' }} />
-                    {user && <span className="hidden md:inline-block ml-2 font-semibold">{user.full_name}</span>}
-                    <i className="pi pi-angle-down ml-2"></i>
-                </button>
+                {/* Hiển thị nút đăng nhập nếu chưa đăng nhập, ngược lại hiển thị menu user */}
+                {!user ? (
+                    <Link href="/auth/login">
+                        <Button 
+                            label="Đăng nhập" 
+                            icon="pi pi-sign-in" 
+                            className="p-button-rounded p-button-outlined"
+                            style={{ 
+                                borderColor: '#ff69b4',
+                                color: '#ff69b4',
+                                fontWeight: '600',
+                                padding: '0.5rem 1.5rem'
+                            }}
+                        />
+                    </Link>
+                ) : (
+                    <>
+                        <button ref={topbarmenubuttonRef} type="button" className="p-link layout-topbar-menu-button layout-topbar-button" onClick={showProfileSidebar}>
+                            <Avatar 
+                                icon="pi pi-user" 
+                                size="normal" 
+                                shape="circle" 
+                                style={{ 
+                                    backgroundColor: '#ff69b4', 
+                                    color: '#fff', 
+                                    width: '38px', 
+                                    height: '38px',
+                                    boxShadow: '0 2px 8px rgba(255, 105, 180, 0.3)'
+                                }} 
+                            />
+                            <span className="hidden md:inline-block ml-2 font-semibold" style={{ color: '#333' }}>{user.full_name}</span>
+                            <i className="pi pi-angle-down ml-2" style={{ fontSize: '0.9rem', color: '#666' }}></i>
+                        </button>
 
-                <div ref={topbarmenuRef} className={classNames('layout-topbar-menu', { 'layout-topbar-menu-mobile-active': layoutState.profileSidebarVisible })}>
-                    {/* User Info Header */}
-                    {user && (
-                        <div className="px-3 py-2 border-bottom-1 surface-border">
-                            <div className="flex align-items-center gap-2">
-                                <Avatar icon="pi pi-user" size="normal" shape="circle" style={{ backgroundColor: 'var(--primary-color)', color: '#fff', width: '32px', height: '32px' }} />
-                                <div className="flex flex-column">
-                                    <span className="font-semibold text-900">{user.full_name}</span>
+                        <div ref={topbarmenuRef} className={classNames('layout-topbar-menu', { 'layout-topbar-menu-mobile-active': layoutState.profileSidebarVisible })}>
+                            {/* User Info Header */}
+                            <div className="px-3 py-3 border-bottom-1 surface-border" style={{ background: 'linear-gradient(135deg, #ffb6c1 0%, #ff69b4 100%)' }}>
+                                <div className="flex align-items-center gap-3">
+                                    <Avatar 
+                                        icon="pi pi-user" 
+                                        size="large" 
+                                        shape="circle" 
+                                        style={{ 
+                                            backgroundColor: '#fff', 
+                                            color: '#ff69b4', 
+                                            width: '48px', 
+                                            height: '48px',
+                                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                                        }} 
+                                    />
+                                    <div className="flex flex-column">
+                                        <span className="font-bold text-white" style={{ fontSize: '1.1rem' }}>{user.full_name}</span>
+                                        <span className="text-white text-sm opacity-90">{user.email}</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
 
-                    <button type="button" className="p-link layout-topbar-button" onClick={handleShowProfile}>
-                        <i className="pi pi-user"></i>
-                        <span>Thông tin cá nhân</span>
-                    </button>
-                    <button type="button" className="p-link layout-topbar-button" onClick={handleLogout}>
-                        <i className="pi pi-sign-out"></i>
-                        <span>Đăng xuất</span>
-                    </button>
-                </div>
+                            <button type="button" className="p-link layout-topbar-button hover:surface-100 transition-colors transition-duration-200" onClick={handleShowProfile} style={{ padding: '1rem 1.5rem' }}>
+                                <i className="pi pi-user" style={{ color: '#ff69b4', fontSize: '1.1rem' }}></i>
+                                <span className="ml-2 font-semibold" style={{ color: '#333' }}>Thông tin cá nhân</span>
+                            </button>
+                            <button type="button" className="p-link layout-topbar-button hover:surface-100 transition-colors transition-duration-200" onClick={handleLogout} style={{ padding: '1rem 1.5rem' }}>
+                                <i className="pi pi-sign-out" style={{ color: '#ff69b4', fontSize: '1.1rem' }}></i>
+                                <span className="ml-2 font-semibold" style={{ color: '#333' }}>Đăng xuất</span>
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
 
             {/* Profile Dialog */}

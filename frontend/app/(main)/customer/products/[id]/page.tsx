@@ -9,7 +9,7 @@ import { Divider } from 'primereact/divider';
 import { TabView, TabPanel } from 'primereact/tabview';
 import React, { useRef, useState, useEffect, useContext } from 'react';
 import { useRouter } from 'next/navigation';
-import { productAPI, cartAPI } from '@/services/api';
+import { productAPI, cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
 
 interface ProductVariant {
@@ -141,6 +141,21 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
     };
 
     const addToCart = async () => {
+        // Kiểm tra đăng nhập
+        const user = getStoredUser();
+        if (!user) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Cảnh báo',
+                detail: 'Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng',
+                life: 3000
+            });
+            setTimeout(() => {
+                router.push('/auth/login');
+            }, 1000);
+            return;
+        }
+
         // Nếu có variants, bắt buộc phải chọn size
         if (product.variants && product.variants.length > 0) {
             const selectedVariant = product.variants.find(v => v.size === selectedSize);
@@ -214,6 +229,21 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
     };
 
     const buyNow = () => {
+        // Kiểm tra đăng nhập
+        const user = getStoredUser();
+        if (!user) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Cảnh báo',
+                detail: 'Vui lòng đăng nhập để mua hàng',
+                life: 3000
+            });
+            setTimeout(() => {
+                router.push('/auth/login');
+            }, 1000);
+            return;
+        }
+
         // Nếu có variants, bắt buộc phải chọn size
         if (product.variants && product.variants.length > 0) {
             const selectedVariant = product.variants.find(v => v.size === selectedSize);

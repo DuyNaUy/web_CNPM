@@ -112,6 +112,9 @@ const Layout = ({ children }: ChildContainerProps) => {
         unbindProfileMenuOutsideClickListener();
     });
 
+    // Kiểm tra xem có phải trang admin không
+    const isAdminPage = pathname?.startsWith('/admin');
+
     const containerClass = classNames('layout-wrapper', {
         'layout-overlay': layoutConfig.menuMode === 'overlay',
         'layout-static': layoutConfig.menuMode === 'static',
@@ -119,16 +122,20 @@ const Layout = ({ children }: ChildContainerProps) => {
         'layout-overlay-active': layoutState.overlayMenuActive,
         'layout-mobile-active': layoutState.staticMenuMobileActive,
         'p-input-filled': layoutConfig.inputStyle === 'filled',
-        'p-ripple-disabled': !layoutConfig.ripple
+        'p-ripple-disabled': !layoutConfig.ripple,
+        'layout-no-sidebar': !isAdminPage  // Thêm class khi không có sidebar
     });
 
     return (
         <React.Fragment>
             <div className={containerClass}>
                 <AppTopbar ref={topbarRef} />
-                <div ref={sidebarRef} className="layout-sidebar">
-                    <AppSidebar />
-                </div>
+                {/* Chỉ hiển thị sidebar khi ở trang admin */}
+                {isAdminPage && (
+                    <div ref={sidebarRef} className="layout-sidebar">
+                        <AppSidebar />
+                    </div>
+                )}
                 <div className="layout-main-container">
                     <div className="layout-main">{children}</div>
                     <AppFooter />

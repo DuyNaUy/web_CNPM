@@ -13,7 +13,7 @@ import { Paginator } from 'primereact/paginator';
 import React, { useRef, useState, useEffect, useContext } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { classNames } from 'primereact/utils';
-import { productAPI, categoryAPI, cartAPI } from '@/services/api';
+import { productAPI, categoryAPI, cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
 
 interface Category {
@@ -188,6 +188,22 @@ const ProductsPage = () => {
     };
 
     const addToCart = async (product: Product) => {
+        // Kiểm tra đăng nhập
+        const user = getStoredUser();
+        if (!user) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Yêu cầu đăng nhập',
+                detail: 'Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng',
+                life: 3000
+            });
+            // Chuyển đến trang đăng nhập
+            setTimeout(() => {
+                router.push('/auth/login');
+            }, 1000);
+            return;
+        }
+
         const selectedSize = selectedSizes[product.id];
         
         // Nếu có variants, bắt buộc phải chọn size
@@ -243,6 +259,21 @@ const ProductsPage = () => {
     };
 
     const buyNow = (product: Product) => {
+        // Kiểm tra đăng nhập
+        const user = getStoredUser();
+        if (!user) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Cảnh báo',
+                detail: 'Vui lòng đăng nhập để mua hàng',
+                life: 3000
+            });
+            setTimeout(() => {
+                router.push('/auth/login');
+            }, 1000);
+            return;
+        }
+
         const selectedSize = selectedSizes[product.id];
         
         // Nếu có variants, bắt buộc phải chọn size

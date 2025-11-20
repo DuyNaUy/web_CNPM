@@ -127,22 +127,13 @@ const RegisterPage = () => {
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Thành công',
-                    detail: 'Đăng ký tài khoản thành công!',
+                    detail: 'Đăng ký tài khoản thành công! Chuyển đến trang đăng nhập...',
                     life: 2000
                 });
 
-                // Set user role
-                if (response.data?.user?.role) {
-                    setRole(response.data.user.role);
-                }
-
-                // Redirect based on role
+                // Redirect to login page after successful registration
                 setTimeout(() => {
-                    if (response.data?.user?.role === 'admin') {
-                        router.push('/admin/products');
-                    } else {
-                        router.push('/customer/products');
-                    }
+                    router.push('/auth/login');
                 }, 2000);
             } else {
                 // Show error messages from backend
