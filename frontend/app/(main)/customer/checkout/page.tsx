@@ -18,6 +18,8 @@ interface CartItem {
     quantity: number;
     image: string;
     unit: string;
+    available_stock?: number;
+    is_available?: boolean;
 }
 
 const CheckoutPage = () => {
@@ -136,6 +138,21 @@ const CheckoutPage = () => {
                 summary: 'Lỗi',
                 detail: 'Giỏ hàng không có sản phẩm',
                 life: 3000
+            });
+            return;
+        }
+        
+        // Kiểm tra xem có sản phẩm nào hết hàng không (nếu có thông tin available)
+        const unavailableItems = cartItems.filter(item => 
+            item.is_available !== undefined && !item.is_available
+        );
+        
+        if (unavailableItems.length > 0) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Không thể đặt hàng',
+                detail: `Có ${unavailableItems.length} sản phẩm đã hết hàng. Vui lòng quay lại giỏ hàng và xóa các sản phẩm này.`,
+                life: 5000
             });
             return;
         }

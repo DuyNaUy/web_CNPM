@@ -280,13 +280,23 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
             return;
         }
 
-        // Lấy giá từ variants nếu có
+        // Xử lý size và price dựa trên variants
+        let size: string;
         let price = product.price;
+        
         if (product.variants && product.variants.length > 0) {
+            // Product có variants - lấy thông tin từ variant đã chọn
             const variant = product.variants.find(v => v.size === selectedSize);
             if (variant) {
+                size = variant.size; // Giữ nguyên format size từ variant
                 price = variant.price;
+            } else {
+                // Fallback nếu không tìm thấy variant (không nên xảy ra vì đã check ở trên)
+                size = selectedSize;
             }
+        } else {
+            // Product không có variants - sử dụng unit mặc định
+            size = selectedSize || product.unit || '30cm';
         }
 
         const item = {
@@ -294,11 +304,12 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
             name: product.name,
             price: price,
             quantity: quantity,
-            unit: product.unit,
-            size: selectedSize || product.unit,
+            unit: size, // Sử dụng size làm unit
+            size: size, // Giữ lại size field để tương thích
             image: product.images && product.images.length > 0 ? product.images[0] : undefined
         };
         
+        console.log('Buy Now (Detail) - Item:', item); // Debug log
         sessionStorage.setItem('buyNowItem', JSON.stringify(item));
         router.push('/customer/checkout');
     };
@@ -376,7 +387,28 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                                     )}
                                 </div>
                                 <div className="text-sm text-600">
-                                    Tình trạng: <span className="font-semibold text-900">Còn {selectedSize && product.variants?.find(v => v.size === selectedSize) ? product.variants.find(v => v.size === selectedSize)?.stock : product.variants && product.variants.length > 0 ? product.variants.reduce((sum, v) => sum + v.stock, 0) : product.stock} sản phẩm</span>
+                                    Tình trạng: 
+                                    <span className={(() => {
+                                        const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
+                                            ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
+                                            : product.variants && product.variants.length > 0 
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
+                                            : product.stock;
+                                        return stock <= 0 ? 'font-semibold text-red-600' : 'font-semibold text-green-600';
+                                    })()}>
+                                        {(() => {
+                                            const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
+                                                ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
+                                                : product.variants && product.variants.length > 0 
+                                                ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
+                                                : product.stock;
+                                            
+                                            if (stock <= 0) {
+                                                return 'Hết hàng';
+                                            }
+                                            return `Còn ${stock} sản phẩm`;
+                                        })()}
+                                    </span>
                                 </div>
                             </div>
 
@@ -421,12 +453,27 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                                     mode="decimal"
                                     showButtons
                                     min={1}
-                                    max={selectedSize && product.variants?.find(v => v.size === selectedSize) ? product.variants.find(v => v.size === selectedSize)?.stock : product.variants && product.variants.length > 0 ? product.variants.reduce((sum, v) => sum + v.stock, 0) : product.stock}
+                                    max={(() => {
+                                        const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
+                                            ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
+                                            : product.variants && product.variants.length > 0 
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
+                                            : product.stock;
+                                        return stock > 0 ? stock : 0;
+                                    })()}
                                     buttonLayout="horizontal"
                                     decrementButtonClassName="p-button-secondary"
                                     incrementButtonClassName="p-button-secondary"
                                     incrementButtonIcon="pi pi-plus"
                                     decrementButtonIcon="pi pi-minus"
+                                    disabled={(() => {
+                                        const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
+                                            ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
+                                            : product.variants && product.variants.length > 0 
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
+                                            : product.stock;
+                                        return stock <= 0;
+                                    })()}
                                 />
                             </div>
 
@@ -436,14 +483,30 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                                     icon="pi pi-shopping-cart" 
                                     className="flex-1 p-button-outlined p-button-lg"
                                     style={{ cursor: 'pointer', opacity: 1 }}
-                                    onClick={addToCart} 
+                                    onClick={addToCart}
+                                    disabled={(() => {
+                                        const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
+                                            ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
+                                            : product.variants && product.variants.length > 0 
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
+                                            : product.stock;
+                                        return stock <= 0;
+                                    })()}
                                 />
                                 <Button 
                                     label="Mua ngay" 
                                     icon="pi pi-bolt" 
                                     className="flex-1 p-button-lg"
                                     style={{ cursor: 'pointer', opacity: 1 }}
-                                    onClick={buyNow} 
+                                    onClick={buyNow}
+                                    disabled={(() => {
+                                        const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
+                                            ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
+                                            : product.variants && product.variants.length > 0 
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
+                                            : product.stock;
+                                        return stock <= 0;
+                                    })()}
                                 />
                             </div>
 

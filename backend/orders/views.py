@@ -241,7 +241,7 @@ class OrderViewSet(viewsets.ViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 
-                # Tính tổng tiền
+                # Tính tổng tiền và validate stock
                 subtotal = Decimal(0)
                 order_items = []
                 
@@ -249,6 +249,8 @@ class OrderViewSet(viewsets.ViewSet):
                     try:
                         product_id = int(item_data.get('id'))
                         quantity = int(item_data.get('quantity', 1))
+                        unit = item_data.get('unit', '')
+                        
                         # IMPORTANT: Use price from item_data if provided, otherwise use product.price
                         item_price = Decimal(str(item_data.get('price', 0)))
                         if item_price == 0:
@@ -258,13 +260,33 @@ class OrderViewSet(viewsets.ViewSet):
                         else:
                             product = Product.objects.get(id=product_id)
                         
+                        # Validate stock trước khi tạo order
+                        if unit and product.variants.exists():
+                            variant = product.variants.filter(size=unit).first()
+                            if not variant:
+                                return Response(
+                                    {'error': f'Kích thước {unit} của sản phẩm {product.name} không tồn tại'},
+                                    status=status.HTTP_400_BAD_REQUEST
+                                )
+                            if variant.stock < quantity:
+                                return Response(
+                                    {'error': f'Sản phẩm {product.name} (Size {unit}) không đủ hàng. Còn lại: {variant.stock}'},
+                                    status=status.HTTP_400_BAD_REQUEST
+                                )
+                        else:
+                            if product.stock < quantity:
+                                return Response(
+                                    {'error': f'Sản phẩm {product.name} không đủ hàng. Còn lại: {product.stock}'},
+                                    status=status.HTTP_400_BAD_REQUEST
+                                )
+                        
                         subtotal += item_price * quantity
                         order_items.append({
                             'product': product,
                             'product_name': product.name,
                             'product_price': item_price,
                             'quantity': quantity,
-                            'unit': item_data.get('unit', product.unit or ''),
+                            'unit': unit or product.unit or '',
                         })
                     except (ValueError, Product.DoesNotExist):
                         return Response(
@@ -334,6 +356,7 @@ class OrderViewSet(viewsets.ViewSet):
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)
             
             except Exception as e:
+                logger.error(f"Error creating order: {str(e)}")
                 return Response(
                     {'error': str(e)},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR

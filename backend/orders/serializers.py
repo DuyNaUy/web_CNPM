@@ -9,10 +9,12 @@ class CartItemDetailSerializer(serializers.ModelSerializer):
     product_price = serializers.DecimalField(source='price', max_digits=15, decimal_places=0, read_only=True)
     product_image = serializers.SerializerMethodField()
     total_price = serializers.SerializerMethodField()
+    available_stock = serializers.SerializerMethodField()
+    is_available = serializers.SerializerMethodField()
     
     class Meta:
         model = CartItem
-        fields = ['id', 'product_id', 'product_name', 'product_price', 'product_image', 'quantity', 'unit', 'total_price']
+        fields = ['id', 'product_id', 'product_name', 'product_price', 'product_image', 'quantity', 'unit', 'total_price', 'available_stock', 'is_available']
         read_only_fields = ['id']
     
     def get_product_image(self, obj):
@@ -28,6 +30,20 @@ class CartItemDetailSerializer(serializers.ModelSerializer):
         """Tính tổng giá cho mục này"""
         price = obj.price if obj.price else obj.product.price
         return price * obj.quantity
+    
+    def get_available_stock(self, obj):
+        """Lấy số lượng tồn kho hiện tại"""
+        if obj.unit and obj.product.variants.exists():
+            variant = obj.product.variants.filter(size=obj.unit).first()
+            if variant:
+                return variant.stock
+            return 0
+        return obj.product.stock
+    
+    def get_is_available(self, obj):
+        """Kiểm tra sản phẩm còn đủ hàng không"""
+        available_stock = self.get_available_stock(obj)
+        return available_stock >= obj.quantity
 
 
 class CartSerializer(serializers.ModelSerializer):

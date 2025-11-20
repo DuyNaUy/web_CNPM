@@ -287,17 +287,26 @@ const ProductsPage = () => {
             return;
         }
 
-        const size = product.variants && product.variants.length > 0 
-            ? `${selectedSize}` 
-            : `${selectedSize ?? 30}cm`;
-        
-        // Lấy giá từ variants nếu có
+        // Xử lý size và price dựa trên variants
+        let size: string;
         let price = product.price;
+        
         if (product.variants && product.variants.length > 0) {
-            const variant = product.variants.find(v => v.size === `${selectedSize}`);
+            // Product có variants - lấy thông tin từ variant đã chọn
+            const selectedSizeStr = `${selectedSize}`;
+            const variant = product.variants.find(v => v.size === selectedSizeStr);
+            
             if (variant) {
+                size = variant.size; // Giữ nguyên format size từ variant (vd: "30", "60", "90")
                 price = variant.price;
+            } else {
+                // Fallback nếu không tìm thấy variant
+                size = selectedSizeStr;
             }
+        } else {
+            // Product không có variants - sử dụng size mặc định
+            const sizeValue = selectedSize ?? 30;
+            size = `${sizeValue}cm`;
         }
 
         const item = {
@@ -305,10 +314,12 @@ const ProductsPage = () => {
             name: product.name,
             price: price,
             quantity: 1,
-            unit: product.unit,
-            size: size,
+            unit: size, // Sử dụng size làm unit
+            size: size, // Giữ lại size field để tương thích
             image: product.main_image_url || product.main_image
         };
+        
+        console.log('Buy Now - Item:', item); // Debug log
         sessionStorage.setItem('buyNowItem', JSON.stringify(item));
         window.location.href = '/customer/checkout';
     };
@@ -344,12 +355,26 @@ const ProductsPage = () => {
                         <div className="flex flex-column gap-3 mb-3">
                             <div className="text-sm text-600">
                                 <span className="font-semibold">Số lượng: </span>
-                                <span>
-                                    {selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
-                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock
+                                <span className={(() => {
+                                    const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
+                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
                                         : product.variants && product.variants.length > 0
                                         ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                        : product.stock}
+                                        : product.stock;
+                                    return stock <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold';
+                                })()}>
+                                    {(() => {
+                                        const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
+                                            ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
+                                            : product.variants && product.variants.length > 0
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                            : product.stock;
+                                        
+                                        if (stock <= 0) {
+                                            return 'Hết hàng';
+                                        }
+                                        return stock;
+                                    })()}
                                 </span>
                             </div>
                             <div className="text-sm text-600">
@@ -357,7 +382,15 @@ const ProductsPage = () => {
                                 <div className="flex gap-3">
                                     {product.variants && product.variants.length > 0 ? (
                                         product.variants.map((variant) => (
-                                            <label key={variant.size} className="flex align-items-center gap-2">
+                                            <label 
+                                                key={variant.size} 
+                                                className="flex align-items-center gap-2"
+                                                style={{
+                                                    opacity: variant.stock === 0 ? 0.4 : 1,
+                                                    cursor: variant.stock === 0 ? 'not-allowed' : 'pointer',
+                                                    pointerEvents: variant.stock === 0 ? 'none' : 'auto'
+                                                }}
+                                            >
                                                 <RadioButton
                                                     inputId={`size-${product.id}-${variant.size}`}
                                                     name={`size-${product.id}`}
@@ -366,7 +399,10 @@ const ProductsPage = () => {
                                                     checked={`${selectedSizes[product.id] ?? ''}` === variant.size}
                                                     disabled={variant.stock === 0}
                                                 />
-                                                <span className="text-sm">{variant.size}</span>
+                                                <span className="text-sm">
+                                                    {variant.size}
+                                                    {variant.stock === 0 && <span className="ml-1 text-red-500">(Hết hàng)</span>}
+                                                </span>
                                             </label>
                                         ))
                                     ) : (
@@ -425,9 +461,32 @@ const ProductsPage = () => {
                                 icon="pi pi-flash" 
                                 className="flex-1"
                                 onClick={() => buyNow(product)}
+                                disabled={(() => {
+                                    const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
+                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
+                                        : product.variants && product.variants.length > 0
+                                        ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                        : product.stock;
+                                    return stock <= 0;
+                                })()}
                                 style={{ backgroundColor: '#ff1493', borderColor: '#ff1493', color: 'white', cursor: 'pointer', opacity: 1 }}
                             />
-                            <Button icon="pi pi-shopping-cart" className="p-button-rounded" onClick={() => addToCart(product)} tooltip="Thêm vào giỏ" tooltipOptions={{ position: 'top' }} style={{ cursor: 'pointer', opacity: 1 }} />
+                            <Button 
+                                icon="pi pi-shopping-cart" 
+                                className="p-button-rounded" 
+                                onClick={() => addToCart(product)} 
+                                tooltip="Thêm vào giỏ" 
+                                tooltipOptions={{ position: 'top' }} 
+                                disabled={(() => {
+                                    const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
+                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
+                                        : product.variants && product.variants.length > 0
+                                        ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                        : product.stock;
+                                    return stock <= 0;
+                                })()}
+                                style={{ cursor: 'pointer', opacity: 1 }} 
+                            />
                         </div>
 
                         {cart[product.id] && (

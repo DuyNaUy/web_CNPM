@@ -20,6 +20,8 @@ interface CartItem {
     product_image: string;
     unit: string;
     total_price: number;
+    available_stock: number;
+    is_available: boolean;
 }
 
 interface Cart {
@@ -176,6 +178,12 @@ const CartPage = () => {
             <div>
                 <div className="font-semibold">{rowData.product_name}</div>
                 <div className="text-sm text-500">Size: {rowData.unit}</div>
+                {!rowData.is_available && (
+                    <div className="text-sm text-red-500 font-semibold mt-1">
+                        <i className="pi pi-exclamation-triangle mr-1"></i>
+                        Hết hàng (Còn {rowData.available_stock})
+                    </div>
+                )}
             </div>
         );
     };
@@ -192,11 +200,13 @@ const CartPage = () => {
                 onValueChange={(e) => updateQuantity(rowData.id, e.value || 0)}
                 showButtons
                 min={0}
+                max={rowData.available_stock}
                 buttonLayout="horizontal"
                 decrementButtonClassName="p-button-danger"
                 incrementButtonClassName="p-button-success"
                 incrementButtonIcon="pi pi-plus"
                 decrementButtonIcon="pi pi-minus"
+                disabled={!rowData.is_available}
             />
         );
     };
@@ -274,11 +284,11 @@ const CartPage = () => {
     };
 
     const calculateSubtotal = () => {
-        // Chỉ tính những sản phẩm được chọn
+        // Chỉ tính những sản phẩm được chọn VÀ còn hàng
         if (selectedItems.size === 0) return 0;
         
         return (cartData?.items || [])
-            .filter(item => selectedItems.has(item.id))
+            .filter(item => selectedItems.has(item.id) && item.is_available)
             .reduce((sum, item) => sum + (item.total_price || 0), 0);
     };
 
@@ -289,6 +299,17 @@ const CartPage = () => {
 
     const calculateTotal = () => {
         return calculateSubtotal() + calculateShipping();
+    };
+    
+    const hasUnavailableItems = () => {
+        return (cartData?.items || [])
+            .filter(item => selectedItems.has(item.id))
+            .some(item => !item.is_available);
+    };
+    
+    const getAvailableSelectedItems = () => {
+        return (cartData?.items || [])
+            .filter(item => selectedItems.has(item.id) && item.is_available);
     };
 
     if (loading) {
@@ -339,6 +360,7 @@ const CartPage = () => {
                                 responsiveLayout="scroll" 
                                 selection={cartItems.filter(item => selectedItems.has(item.id))}
                                 onSelectionChange={onSelectionChange}
+                                rowClassName={(data) => !data.is_available ? 'surface-100' : ''}
                             >
                                 <Column selectionMode="multiple" headerStyle={{ width: '3rem' }} />
                                 <Column header="Sản phẩm" body={imageBodyTemplate} style={{ width: '100px' }} />
@@ -365,6 +387,17 @@ const CartPage = () => {
                                         </div>
                                         {selectedItems.size > 0 && (
                                             <>
+                                                {hasUnavailableItems() && (
+                                                    <div className="bg-red-100 border-round p-3 mb-3">
+                                                        <div className="flex align-items-center gap-2 text-red-700 mb-2">
+                                                            <i className="pi pi-exclamation-triangle"></i>
+                                                            <span className="font-semibold">Có sản phẩm hết hàng!</span>
+                                                        </div>
+                                                        <p className="text-sm text-red-600 m-0">
+                                                            Một số sản phẩm bạn chọn đã hết hàng. Vui lòng bỏ chọn hoặc xóa các sản phẩm này để tiếp tục.
+                                                        </p>
+                                                    </div>
+                                                )}
                                                 <div className="flex justify-content-between mb-2">
                                                     <span>Phí vận chuyển:</span>
                                                     <span className={calculateShipping() === 0 ? 'text-green-500 font-bold' : ''}>
@@ -382,10 +415,31 @@ const CartPage = () => {
                                                     icon="pi pi-credit-card" 
                                                     className="w-full" 
                                                     size="large"
+                                                    disabled={hasUnavailableItems() || calculateTotal() === 0}
                                                     onClick={() => {
+                                                        if (hasUnavailableItems()) {
+                                                            toast.current?.show({
+                                                                severity: 'error',
+                                                                summary: 'Không thể thanh toán',
+                                                                detail: 'Vui lòng xóa các sản phẩm hết hàng khỏi giỏ hàng trước khi thanh toán',
+                                                                life: 3000
+                                                            });
+                                                            return;
+                                                        }
+                                                        
+                                                        const availableItems = getAvailableSelectedItems();
+                                                        if (availableItems.length === 0) {
+                                                            toast.current?.show({
+                                                                severity: 'warn',
+                                                                summary: 'Cảnh báo',
+                                                                detail: 'Không có sản phẩm nào để thanh toán',
+                                                                life: 3000
+                                                            });
+                                                            return;
+                                                        }
+                                                        
                                                         // Save selected items to sessionStorage
-                                                        const selectedCartItems = (cartData?.items || []).filter(item => selectedItems.has(item.id));
-                                                        sessionStorage.setItem('selectedCheckoutItems', JSON.stringify(selectedCartItems));
+                                                        sessionStorage.setItem('selectedCheckoutItems', JSON.stringify(availableItems));
                                                         // Navigate to checkout
                                                         window.location.href = '/customer/checkout';
                                                     }}
