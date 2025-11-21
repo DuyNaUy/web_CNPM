@@ -38,7 +38,7 @@ const CustomerHomePage = () => {
                 </div>
                 <div className="flex justify-content-center md:justify-content-end mt-4">
                     <img 
-                        src="https://images.unsplash.com/photo-1596945733394-5b28f9f47f7e?w=800" 
+                        src="/home/image/anh1.jpg" 
                         alt="Teddy Bears" 
                         className="w-9 md:w-auto border-round-3xl shadow-8" 
                         style={{ maxHeight: '450px', objectFit: 'cover' }}
@@ -235,7 +235,7 @@ const CustomerHomePage = () => {
                 <div className="grid mt-8 pb-2 md:pb-8 align-items-center">
                     <div className="flex justify-content-center col-12 lg:col-6 p-6 flex-order-1 lg:flex-order-0">
                         <img 
-                            src="https://images.unsplash.com/photo-1590080876795-cd7b7ddc1f69?w=600" 
+                            src="/home/image/anh2.jpg" 
                             alt="Teddy Delivery" 
                             className="w-full border-round-3xl shadow-5" 
                             style={{ maxHeight: '450px', objectFit: 'cover' }}
@@ -284,7 +284,7 @@ const CustomerHomePage = () => {
 
                     <div className="flex justify-content-end flex-order-1 sm:flex-order-2 col-12 lg:col-6 p-6">
                         <img 
-                            src="https://images.unsplash.com/photo-1559027615-cd2628902d4a?w=600" 
+                            src="/home/image/anh3.jpg" 
                             alt="Quality Teddy" 
                             className="w-full border-round-3xl shadow-5" 
                             style={{ maxHeight: '450px', objectFit: 'cover' }}
@@ -295,7 +295,7 @@ const CustomerHomePage = () => {
                 <div className="grid my-8 pt-2 md:pt-8 align-items-center">
                     <div className="flex justify-content-center col-12 lg:col-6 p-6 flex-order-1 lg:flex-order-0">
                         <img 
-                            src="https://images.unsplash.com/photo-1552820728-8ac41f1ce891?w=600" 
+                            src="/home/image/anh4.jpg" 
                             alt="Cute Bears" 
                             className="w-full border-round-3xl shadow-5" 
                             style={{ maxHeight: '450px', objectFit: 'cover' }}
