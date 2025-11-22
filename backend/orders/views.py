@@ -374,7 +374,20 @@ class OrderViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        orders = Order.objects.all().order_by('-created_at')
+        # Tìm kiếm đơn hàng
+        search_query = request.query_params.get('search', None)
+        orders = Order.objects.all()
+        
+        if search_query:
+            from django.db.models import Q
+            orders = orders.filter(
+                Q(order_code__icontains=search_query) |
+                Q(full_name__icontains=search_query) |
+                Q(phone__icontains=search_query) |
+                Q(email__icontains=search_query)
+            )
+        
+        orders = orders.order_by('-created_at')
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data)
 

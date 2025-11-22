@@ -450,8 +450,11 @@ export const orderAPI = {
         return await apiRequest('/orders/my_orders/');
     },
 
-    getAllOrders: async () => {
-        return await apiRequest('/orders/all_orders/');
+    getAllOrders: async (search?: string) => {
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        const queryString = params.toString();
+        return await apiRequest(`/orders/all_orders/${queryString ? '?' + queryString : ''}`);
     },
 
     updateOrderStatus: async (order_id: number, status: string) => {

@@ -46,6 +46,7 @@ const OrdersPage = () => {
     const [orderDialog, setOrderDialog] = useState(false);
     const [order, setOrder] = useState<Order | null>(null);
     const [globalFilter, setGlobalFilter] = useState('');
+    const [searchText, setSearchText] = useState('');
     const toast = useRef<Toast>(null);
 
     const statuses = [
@@ -60,11 +61,11 @@ const OrdersPage = () => {
         loadOrders();
     }, []);
 
-    const loadOrders = async () => {
+    const loadOrders = async (search?: string) => {
         setLoading(true);
         try {
-            console.log('Loading orders...');
-            const response = await orderAPI.getAllOrders();
+            console.log('Loading orders with search:', search);
+            const response = await orderAPI.getAllOrders(search);
             console.log('Orders response:', response);
             
             if (Array.isArray(response)) {
@@ -93,6 +94,16 @@ const OrdersPage = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleSearch = () => {
+        loadOrders(searchText);
+    };
+
+    const handleClearSearch = () => {
+        setSearchText('');
+        setGlobalFilter('');
+        loadOrders('');
     };
 
     const viewOrder = (order: Order) => {
@@ -180,10 +191,28 @@ const OrdersPage = () => {
     const header = (
         <div className="flex flex-wrap gap-2 align-items-center justify-content-between">
             <h4 className="m-0">Quản Lý Đơn Hàng</h4>
-            <span className="p-input-icon-left">
-                <i className="pi pi-search" />
-                <InputText type="search" placeholder="Tìm kiếm..." onInput={(e) => setGlobalFilter((e.target as HTMLInputElement).value)} />
-            </span>
+            <div className="p-inputgroup" style={{ maxWidth: '400px' }}>
+                <InputText 
+                    type="search" 
+                    placeholder="Tìm theo mã, tên, SĐT, email..." 
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                />
+                <Button 
+                    icon="pi pi-search" 
+                    className="p-button-primary" 
+                    onClick={handleSearch}
+                    loading={loading}
+                />
+                {searchText && (
+                    <Button 
+                        icon="pi pi-times" 
+                        className="p-button-secondary" 
+                        onClick={handleClearSearch}
+                    />
+                )}
+            </div>
         </div>
     );
 
@@ -221,7 +250,6 @@ const OrdersPage = () => {
                         rowsPerPageOptions={[5, 10, 25]}
                         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                         currentPageReportTemplate="Hiển thị {first} đến {last} trong tổng số {totalRecords} đơn hàng"
-                        globalFilter={globalFilter}
                         header={header}
                         loading={loading}
                     >
