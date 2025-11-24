@@ -160,77 +160,181 @@ const RegisterPage = () => {
     };
 
     return (
-        <div className={containerClassName}>
+        <div className={containerClassName} style={{ background: 'linear-gradient(135deg, #FFF5E1 0%, #FFE4E1 50%, #FFF0F5 100%)' }}>
             <Toast ref={toast} />
             <div className="flex flex-column align-items-center justify-content-center">
                 <div
                     style={{
-                        borderRadius: '56px',
-                        padding: '0.3rem',
-                        background: 'linear-gradient(180deg, var(--primary-color) 10%, rgba(33, 150, 243, 0) 30%)'
+                        borderRadius: '32px',
+                        padding: '0.5rem',
+                        background: 'linear-gradient(135deg, #FF9A9E 0%, #FAD0C4 50%, #FFB7D5 100%)',
+                        boxShadow: '0 20px 60px rgba(255, 154, 158, 0.3)'
                     }}
                 >
-                    <div className="w-full surface-card py-8 px-5 sm:px-8" style={{ borderRadius: '53px' }}>
-                        <div className="text-center mb-5">
-                            <div className="text-900 text-4xl font-bold mb-3">
-                                <i className="pi pi-heart mr-2" style={{ fontSize: '2.5rem', color: 'var(--primary-color)' }}></i>
-                                Teddy Shop 🧸
+                    <div 
+                        className="w-full surface-card py-8 px-5 sm:px-8" 
+                        style={{ 
+                            borderRadius: '28px',
+                            background: 'linear-gradient(to bottom, #FFFFFF 0%, #FFF5F7 100%)',
+                            boxShadow: 'inset 0 2px 10px rgba(255, 182, 193, 0.1)'
+                        }}
+                    >
+                        <div className="text-center mb-6">
+                            <div className="mb-4">
+                                <span className="text-6xl">🧸</span>
                             </div>
-                            <div className="text-900 text-3xl font-medium mb-2">Đăng Ký Tài Khoản</div>
-                            <span className="text-600 font-medium">Tạo tài khoản mới để bắt đầu mua sắm</span>
+                            <div className="text-4xl font-bold mb-2" style={{ 
+                                background: 'linear-gradient(135deg, #D2691E 0%, #8B4513 100%)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                backgroundClip: 'text'
+                            }}>
+                                Teddy Shop
+                            </div>
+                            <div className="text-2xl font-semibold mb-3" style={{ color: '#C04848' }}>
+                                Đăng Ký Tài Khoản
+                            </div>
+                            <span className="font-medium" style={{ color: '#8B6F47', fontSize: '1rem' }}>
+                                Tham gia cùng chúng mình để khám phá thế giới <br/>
+                                những chú gấu bông đáng yêu 💕
+                            </span>
                         </div>
 
                         <div>
-                            <label htmlFor="fullName" className="block text-900 text-xl font-medium mb-2">
-                                Họ và tên
-                            </label>
-                            <InputText id="fullName" type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nhập họ và tên của bạn" className="w-full md:w-30rem mb-4" style={{ padding: '1rem' }} />
+                            {/* Thông tin cá nhân */}
+                            <div className="mb-4">
+                                <label htmlFor="fullName" className="block font-semibold mb-2" style={{ color: '#6B4423' }}>
+                                    👤 Họ và tên <span style={{ color: '#E74C3C' }}>*</span>
+                                </label>
+                                <InputText 
+                                    id="fullName" 
+                                    type="text" 
+                                    value={fullName} 
+                                    onChange={(e) => setFullName(e.target.value)} 
+                                    placeholder="Nhập họ và tên của bạn" 
+                                    className="w-full md:w-30rem" 
+                                    style={{ 
+                                        padding: '0.85rem',
+                                        borderRadius: '12px',
+                                        border: '2px solid #FFD4D4',
+                                        transition: 'all 0.3s'
+                                    }} 
+                                />
+                            </div>
 
-                            <label htmlFor="email" className="block text-900 text-xl font-medium mb-2">
-                                Email
-                            </label>
-                            <InputText id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Nhập email của bạn" className="w-full md:w-30rem mb-4" style={{ padding: '1rem' }} />
+                            {/* Email và Số điện thoại - 2 cột trên màn hình lớn */}
+                            <div className="grid mb-4">
+                                <div className="col-12 md:col-6">
+                                    <label htmlFor="email" className="block font-semibold mb-2" style={{ color: '#6B4423' }}>
+                                        📧 Email <span style={{ color: '#E74C3C' }}>*</span>
+                                    </label>
+                                    <InputText 
+                                        id="email" 
+                                        type="email" 
+                                        value={email} 
+                                        onChange={(e) => setEmail(e.target.value)} 
+                                        placeholder="example@email.com" 
+                                        className="w-full" 
+                                        style={{ 
+                                            padding: '0.85rem',
+                                            borderRadius: '12px',
+                                            border: '2px solid #FFD4D4',
+                                            transition: 'all 0.3s'
+                                        }} 
+                                    />
+                                </div>
+                                <div className="col-12 md:col-6">
+                                    <label htmlFor="phone" className="block font-semibold mb-2" style={{ color: '#6B4423' }}>
+                                        📱 Số điện thoại <span style={{ color: '#E74C3C' }}>*</span>
+                                    </label>
+                                    <InputText 
+                                        id="phone" 
+                                        type="tel" 
+                                        value={phone} 
+                                        onChange={(e) => setPhone(e.target.value)} 
+                                        placeholder="0123456789" 
+                                        className="w-full" 
+                                        style={{ 
+                                            padding: '0.85rem',
+                                            borderRadius: '12px',
+                                            border: '2px solid #FFD4D4',
+                                            transition: 'all 0.3s'
+                                        }} 
+                                        maxLength={10} 
+                                    />
+                                </div>
+                            </div>
 
-                            <label htmlFor="phone" className="block text-900 text-xl font-medium mb-2">
-                                Số điện thoại
-                            </label>
-                            <InputText id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Nhập số điện thoại" className="w-full md:w-30rem mb-4" style={{ padding: '1rem' }} maxLength={10} />
+                            {/* Mật khẩu và Xác nhận mật khẩu */}
+                            <div className="mb-4">
+                                <label htmlFor="password" className="block font-semibold mb-2" style={{ color: '#6B4423' }}>
+                                    🔐 Mật khẩu <span style={{ color: '#E74C3C' }}>*</span>
+                                </label>
+                                <Password
+                                    inputId="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="Nhập mật khẩu"
+                                    toggleMask
+                                    className="w-full"
+                                    inputClassName="w-full p-3"
+                                    inputStyle={{
+                                        borderRadius: '12px',
+                                        border: '2px solid #FFD4D4'
+                                    }}
+                                    header={passwordHeader}
+                                    footer={passwordFooter}
+                                />
+                            </div>
 
-                            <label htmlFor="password" className="block text-900 font-medium text-xl mb-2">
-                                Mật khẩu
-                            </label>
-                            <Password
-                                inputId="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                placeholder="Nhập mật khẩu"
-                                toggleMask
-                                className="w-full mb-4"
-                                inputClassName="w-full p-3 md:w-30rem"
-                                header={passwordHeader}
-                                footer={passwordFooter}
+                            <div className="mb-5">
+                                <label htmlFor="confirmPassword" className="block font-semibold mb-2" style={{ color: '#6B4423' }}>
+                                    🔒 Xác nhận mật khẩu <span style={{ color: '#E74C3C' }}>*</span>
+                                </label>
+                                <Password
+                                    inputId="confirmPassword"
+                                    value={confirmPassword}
+                                    onChange={(e) => setConfirmPassword(e.target.value)}
+                                    placeholder="Nhập lại mật khẩu"
+                                    toggleMask
+                                    className="w-full"
+                                    inputClassName="w-full p-3"
+                                    inputStyle={{
+                                        borderRadius: '12px',
+                                        border: '2px solid #FFD4D4'
+                                    }}
+                                    feedback={false}
+                                />
+                            </div>
+
+                            <Button 
+                                label="Đăng Ký" 
+                                icon="pi pi-user-plus" 
+                                className="w-full p-3 text-xl mb-4" 
+                                style={{ 
+                                    background: 'linear-gradient(135deg, #FF8E9E 0%, #FF6B9D 100%)',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    fontWeight: '600',
+                                    borderRadius: '12px',
+                                    boxShadow: '0 8px 20px rgba(255, 107, 157, 0.3)',
+                                    transition: 'transform 0.2s, box-shadow 0.2s',
+                                    fontSize: '1.1rem',
+                                    letterSpacing: '0.5px'
+                                }}
+                                onClick={handleRegister} 
+                                loading={loading} 
+                                disabled={loading} 
                             />
 
-                            <label htmlFor="confirmPassword" className="block text-900 font-medium text-xl mb-2">
-                                Xác nhận mật khẩu
-                            </label>
-                            <Password
-                                inputId="confirmPassword"
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
-                                placeholder="Nhập lại mật khẩu"
-                                toggleMask
-                                className="w-full mb-5"
-                                inputClassName="w-full p-3 md:w-30rem"
-                                feedback={false}
-                            />
-
-                            <Button label="Đăng Ký" icon="pi pi-user-plus" className="w-full p-3 text-xl mb-4" onClick={handleRegister} loading={loading} disabled={loading} />
-
-                            <div className="text-center">
-                                <span className="text-600 font-medium">Đã có tài khoản? </span>
-                                <Link href="/auth/login" className="font-medium no-underline cursor-pointer" style={{ color: 'var(--primary-color)' }}>
-                                    Đăng nhập ngay
+                            <div className="text-center pt-3" style={{ borderTop: '1px solid #FFE4E4' }}>
+                                <span style={{ color: '#8B7355', fontWeight: '500' }}>Đã có tài khoản? </span>
+                                <Link 
+                                    href="/auth/login" 
+                                    className="font-semibold no-underline cursor-pointer" 
+                                    style={{ color: '#FF6B9D', transition: 'color 0.3s' }}
+                                >
+                                    Đăng nhập ngay →
                                 </Link>
                             </div>
                         </div>

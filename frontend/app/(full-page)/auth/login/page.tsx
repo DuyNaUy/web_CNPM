@@ -98,53 +98,136 @@ const LoginPage = () => {
     };
 
     return (
-        <div className={containerClassName}>
+        <div className={containerClassName} style={{ background: 'linear-gradient(135deg, #FFF5E1 0%, #FFE4E1 50%, #FFF0F5 100%)' }}>
             <Toast ref={toast} />
             <div className="flex flex-column align-items-center justify-content-center">
                 <div
                     style={{
-                        borderRadius: '56px',
-                        padding: '0.3rem',
-                        background: 'linear-gradient(180deg, var(--primary-color) 10%, rgba(33, 150, 243, 0) 30%)'
+                        borderRadius: '32px',
+                        padding: '0.5rem',
+                        background: 'linear-gradient(135deg, #FF9A9E 0%, #FAD0C4 50%, #FFB7D5 100%)',
+                        boxShadow: '0 20px 60px rgba(255, 154, 158, 0.3)'
                     }}
                 >
-                    <div className="w-full surface-card py-8 px-5 sm:px-8" style={{ borderRadius: '53px' }}>
-                        <div className="text-center mb-5">
-                            <div className="text-900 text-4xl font-bold mb-3">
-                                <i className="pi pi-heart mr-2" style={{ fontSize: '2.5rem', color: 'var(--primary-color)' }}></i>
-                                Teddy Shop 🧸
+                    <div 
+                        className="w-full surface-card py-8 px-5 sm:px-8" 
+                        style={{ 
+                            borderRadius: '28px',
+                            background: 'linear-gradient(to bottom, #FFFFFF 0%, #FFF5F7 100%)',
+                            boxShadow: 'inset 0 2px 10px rgba(255, 182, 193, 0.1)'
+                        }}
+                    >
+                        <div className="text-center mb-6">
+                            <div className="mb-4">
+                                <span className="text-6xl">🧸</span>
                             </div>
-                            <div className="text-900 text-3xl font-medium mb-2">Đăng Nhập</div>
-                            <span className="text-600 font-medium">Chào mừng bạn quay trở lại!</span>
+                            <div className="text-4xl font-bold mb-2" style={{ 
+                                background: 'linear-gradient(135deg, #D2691E 0%, #8B4513 100%)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                backgroundClip: 'text'
+                            }}>
+                                Teddy Shop
+                            </div>
+                            <div className="text-2xl font-semibold mb-3" style={{ color: '#C04848' }}>
+                                Đăng Nhập
+                            </div>
+                            <span className="font-medium" style={{ color: '#8B6F47', fontSize: '1rem' }}>
+                                Chào mừng bạn trở lại! Hãy đăng nhập để khám phá <br/>
+                                những chú gấu bông đáng yêu đang chờ bạn 💕
+                            </span>
                         </div>
 
                         <div>
-                            <label htmlFor="email" className="block text-900 text-xl font-medium mb-2">
-                                Email
-                            </label>
-                            <InputText id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Nhập email của bạn" className="w-full md:w-30rem mb-4" style={{ padding: '1rem' }} />
+                            <div className="mb-4">
+                                <label htmlFor="email" className="block font-semibold mb-2" style={{ color: '#6B4423' }}>
+                                    📧 Email <span style={{ color: '#E74C3C' }}>*</span>
+                                </label>
+                                <InputText 
+                                    id="email" 
+                                    type="email" 
+                                    value={email} 
+                                    onChange={(e) => setEmail(e.target.value)} 
+                                    placeholder="example@email.com" 
+                                    className="w-full md:w-30rem" 
+                                    style={{ 
+                                        padding: '0.85rem',
+                                        borderRadius: '12px',
+                                        border: '2px solid #FFD4D4',
+                                        transition: 'all 0.3s'
+                                    }} 
+                                />
+                            </div>
 
-                            <label htmlFor="password" className="block text-900 font-medium text-xl mb-2">
-                                Mật khẩu
-                            </label>
-                            <Password inputId="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Nhập mật khẩu" toggleMask className="w-full mb-4" inputClassName="w-full p-3 md:w-30rem" feedback={false} />
+                            <div className="mb-4">
+                                <label htmlFor="password" className="block font-semibold mb-2" style={{ color: '#6B4423' }}>
+                                    🔐 Mật khẩu <span style={{ color: '#E74C3C' }}>*</span>
+                                </label>
+                                <Password 
+                                    inputId="password" 
+                                    value={password} 
+                                    onChange={(e) => setPassword(e.target.value)} 
+                                    placeholder="Nhập mật khẩu của bạn" 
+                                    toggleMask 
+                                    className="w-full" 
+                                    inputClassName="w-full p-3" 
+                                    inputStyle={{
+                                        borderRadius: '12px',
+                                        border: '2px solid #FFD4D4'
+                                    }}
+                                    feedback={false} 
+                                />
+                            </div>
 
-                            <div className="flex align-items-center justify-content-between mb-5 gap-5">
+                            <div className="flex align-items-center justify-content-between mb-5">
                                 <div className="flex align-items-center">
-                                    <Checkbox inputId="rememberme" checked={rememberMe} onChange={(e) => setRememberMe(e.checked ?? false)} className="mr-2" />
-                                    <label htmlFor="rememberme">Ghi nhớ đăng nhập</label>
+                                    <Checkbox 
+                                        inputId="rememberme" 
+                                        checked={rememberMe} 
+                                        onChange={(e) => setRememberMe(e.checked ?? false)} 
+                                        className="mr-2"
+                                        style={{ width: '20px', height: '20px' }}
+                                    />
+                                    <label htmlFor="rememberme" style={{ color: '#6B4423', fontWeight: '500', cursor: 'pointer' }}>
+                                        Ghi nhớ đăng nhập
+                                    </label>
                                 </div>
-                                <a className="font-medium no-underline ml-2 text-right cursor-pointer" style={{ color: 'var(--primary-color)' }}>
+                                <a 
+                                    className="font-medium no-underline text-right cursor-pointer" 
+                                    style={{ color: '#FF6B9D', fontWeight: '500', transition: 'color 0.3s' }}
+                                >
                                     Quên mật khẩu?
                                 </a>
                             </div>
 
-                            <Button label="Đăng Nhập" icon="pi pi-sign-in" className="w-full p-3 text-xl mb-4" onClick={handleLogin} loading={loading} disabled={loading} />
+                            <Button 
+                                label="Đăng Nhập" 
+                                icon="pi pi-sign-in" 
+                                className="w-full p-3 text-xl mb-4" 
+                                style={{ 
+                                    background: 'linear-gradient(135deg, #FF8E9E 0%, #FF6B9D 100%)',
+                                    border: 'none',
+                                    color: '#FFFFFF',
+                                    fontWeight: '600',
+                                    borderRadius: '12px',
+                                    boxShadow: '0 8px 20px rgba(255, 107, 157, 0.3)',
+                                    transition: 'transform 0.2s, box-shadow 0.2s',
+                                    fontSize: '1.1rem',
+                                    letterSpacing: '0.5px'
+                                }}
+                                onClick={handleLogin} 
+                                loading={loading} 
+                                disabled={loading} 
+                            />
 
-                            <div className="text-center">
-                                <span className="text-600 font-medium">Chưa có tài khoản? </span>
-                                <Link href="/auth/register" className="font-medium no-underline cursor-pointer" style={{ color: 'var(--primary-color)' }}>
-                                    Đăng ký ngay
+                            <div className="text-center pt-3" style={{ borderTop: '1px solid #FFE4E4' }}>
+                                <span style={{ color: '#8B7355', fontWeight: '500' }}>Chưa có tài khoản? </span>
+                                <Link 
+                                    href="/auth/register" 
+                                    className="font-semibold no-underline cursor-pointer" 
+                                    style={{ color: '#FF6B9D', transition: 'color 0.3s' }}
+                                >
+                                    Đăng ký ngay →
                                 </Link>
                             </div>
                         </div>

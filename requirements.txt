@@ -18,6 +18,3 @@ mysqlclient>=2.2.0
 
 # Filter support
 django-filter>=23.5
-
-
-# Xin chao tôi là duy na uy
