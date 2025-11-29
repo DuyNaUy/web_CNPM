@@ -98,7 +98,7 @@ const OrdersPage = () => {
         return (
             <div className="flex gap-2">
                 <Button icon="pi pi-eye" rounded outlined onClick={() => viewOrderDetail(rowData)} tooltip="Xem chi tiết" />
-                {rowData.status === 'pending' && <Button icon="pi pi-times" rounded outlined severity="danger" onClick={() => cancelOrder(rowData)} tooltip="Hủy đơn" />}
+                {(rowData.status === 'pending' || rowData.status === 'confirmed') && <Button icon="pi pi-times" rounded outlined severity="danger" onClick={() => cancelOrder(rowData)} tooltip="Hủy đơn" />}
                 {rowData.status === 'delivered' && <Button icon="pi pi-replay" rounded outlined severity="warning" onClick={() => returnOrder(rowData)} tooltip="Hoàn hàng" />}
             </div>
         );
@@ -114,14 +114,25 @@ const OrdersPage = () => {
             message: `Bạn có chắc chắn muốn hủy đơn hàng ${order.order_code}?`,
             header: 'Xác nhận hủy đơn',
             icon: 'pi pi-exclamation-triangle',
-            accept: () => {
-                setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'cancelled' } : o)));
-                toast.current?.show({
-                    severity: 'success',
-                    summary: 'Đã hủy',
-                    detail: 'Đơn hàng đã được hủy thành công',
-                    life: 3000
-                });
+            accept: async () => {
+                try {
+                    await orderAPI.cancelOrder(order.id);
+                    await loadOrders();
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã hủy',
+                        detail: 'Đơn hàng đã được hủy thành công',
+                        life: 3000
+                    });
+                } catch (error: any) {
+                    console.error('Error cancelling order:', error);
+                    toast.current?.show({
+                        severity: 'error',
+                        summary: 'Lỗi',
+                        detail: error.response?.data?.error || 'Không thể hủy đơn hàng',
+                        life: 3000
+                    });
+                }
             },
             acceptLabel: 'Có',
             rejectLabel: 'Không'

@@ -112,6 +112,11 @@ const AccountsPage = () => {
         { label: 'Ngừng hoạt động', value: false }
     ];
 
+    // Helper to get status option from boolean value
+    const getStatusOption = (isActive: boolean) => {
+        return statuses.find(s => s.value === isActive);
+    };
+
     const openNew = () => {
         setAccount({
             id: 0,
@@ -313,7 +318,8 @@ const AccountsPage = () => {
     };
 
     const onDropdownChange = (e: any, name: string) => {
-        const val = e.value || '';
+        // For is_active field, e.value is already boolean from dropdown options
+        const val = e.value !== undefined ? e.value : '';
         let _account = { ...account };
         (_account as any)[name] = val;
         setAccount(_account);
@@ -517,7 +523,15 @@ const AccountsPage = () => {
                             <label htmlFor="is_active">
                                 Trạng thái <span className="text-red-500">*</span>
                             </label>
-                            <Dropdown id="is_active" value={account.is_active} options={statuses} onChange={(e) => onDropdownChange(e, 'is_active')} placeholder="Chọn trạng thái" />
+                            <Dropdown 
+                                id="is_active" 
+                                value={account.is_active} 
+                                options={statuses} 
+                                onChange={(e) => onDropdownChange(e, 'is_active')} 
+                                optionLabel="label" 
+                                optionValue="value"
+                                placeholder="Chọn trạng thái" 
+                            />
                         </div>
                     </Dialog>
 

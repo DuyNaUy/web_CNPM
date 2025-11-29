@@ -464,6 +464,13 @@ export const orderAPI = {
         });
     },
 
+    cancelOrder: async (order_id: number) => {
+        return await apiRequest('/orders/cancel_order/', {
+            method: 'POST',
+            body: JSON.stringify({ order_id })
+        });
+    },
+
     getStats: async () => {
         return await apiRequest('/orders/stats/');
     },

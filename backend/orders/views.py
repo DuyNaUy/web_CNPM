@@ -227,6 +227,73 @@ class OrderViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
+    def cancel_order(self, request):
+        """Khách hàng hủy đơn hàng của mình"""
+        try:
+            order_id = request.data.get('order_id')
+            
+            if not order_id:
+                return Response(
+                    {'error': 'order_id là bắt buộc'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Lấy đơn hàng của user
+            try:
+                order = Order.objects.get(id=order_id, user=request.user)
+            except Order.DoesNotExist:
+                return Response(
+                    {'error': 'Đơn hàng không tồn tại hoặc bạn không có quyền hủy đơn hàng này'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Kiểm tra trạng thái đơn hàng - chỉ cho phép hủy khi ở pending hoặc confirmed
+            if order.status not in ['pending', 'confirmed']:
+                status_names = {
+                    'shipping': 'Đang giao',
+                    'delivered': 'Đã giao',
+                    'cancelled': 'Đã hủy'
+                }
+                return Response(
+                    {'error': f'Không thể hủy đơn hàng ở trạng thái {status_names.get(order.status, order.status)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            old_status = order.status
+            order.status = 'cancelled'
+            order.save()
+            
+            # Hoàn trả tồn kho khi hủy đơn
+            for order_item in order.items.all():
+                product = order_item.product
+                if product:
+                    unit = order_item.unit
+                    quantity = order_item.quantity
+                    
+                    # Nếu có unit (variant), hoàn trả stock cho variant
+                    if unit and product.variants.exists():
+                        variant = product.variants.filter(size=unit).first()
+                        if variant:
+                            variant.stock += quantity
+                            variant.save()
+                            logger.info(f"Restored variant {variant.size} stock: +{quantity}")
+                    else:
+                        # Hoàn trả stock cho product
+                        product.stock += quantity
+                        product.save()
+                        logger.info(f"Restored product {product.name} stock: +{quantity}")
+            
+            serializer = OrderSerializer(order)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            logger.error(f"Error cancelling order: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'])
     def create_order(self, request):
         """Tạo đơn hàng mới"""
         serializer = OrderCreateSerializer(data=request.data)
@@ -421,6 +488,45 @@ class OrderViewSet(viewsets.ViewSet):
             
             order = Order.objects.get(id=order_id)
             old_status = order.status
+            
+            # Định nghĩa thứ tự trạng thái cho admin
+            status_flow = {
+                'pending': ['confirmed', 'cancelled'],
+                'confirmed': ['shipping', 'cancelled'],
+                'shipping': ['delivered'],  # Đang giao không thể hủy
+                'delivered': [],  # Không thể thay đổi từ delivered
+                'cancelled': []   # Không thể thay đổi từ cancelled
+            }
+            
+            # Kiểm tra xem có thể chuyển sang trạng thái mới không
+            if old_status == new_status:
+                return Response(
+                    {'error': f'Đơn hàng đã ở trạng thái {order.get_status_display()}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            allowed_statuses = status_flow.get(old_status, [])
+            if new_status not in allowed_statuses:
+                status_names = {
+                    'pending': 'Chờ xử lý',
+                    'confirmed': 'Đã xác nhận',
+                    'shipping': 'Đang giao',
+                    'delivered': 'Đã giao',
+                    'cancelled': 'Đã hủy'
+                }
+                
+                if not allowed_statuses:
+                    return Response(
+                        {'error': f'Không thể thay đổi trạng thái từ {status_names[old_status]}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                allowed_names = [status_names[s] for s in allowed_statuses]
+                return Response(
+                    {'error': f'Từ trạng thái {status_names[old_status]}, chỉ có thể chuyển sang: {", ".join(allowed_names)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             order.status = new_status
             order.save()
             
