@@ -20,9 +20,12 @@ mysqlclient>=2.2.0
 django-filter>=23.5
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 # HTTP requests (for MoMo payment)
 requests>=2.31.0
 =======
+=======
+>>>>>>> 87e14d64be8504bd1503d42dba15b8403c32b3a6
 # Production server
 gunicorn>=21.2.0
 
@@ -38,4 +41,7 @@ reportlab>=4.0.0
 
 # Database URL parsing
 dj-database-url>=2.1.0
+<<<<<<< HEAD
+>>>>>>> 87e14d64be8504bd1503d42dba15b8403c32b3a6
+=======
 >>>>>>> 87e14d64be8504bd1503d42dba15b8403c32b3a6
