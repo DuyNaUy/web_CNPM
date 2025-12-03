@@ -37,6 +37,11 @@ class Order(models.Model):
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
     payment_status = models.CharField(max_length=20, default='pending')  # pending, completed, failed
     
+    # MoMo payment info
+    momo_transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    momo_request_id = models.CharField(max_length=100, blank=True, null=True)
+    momo_order_id = models.CharField(max_length=100, blank=True, null=True)
+    
     # Amounts
     subtotal = models.DecimalField(max_digits=15, decimal_places=0)  # VND
     shipping_fee = models.DecimalField(max_digits=15, decimal_places=0, default=0)

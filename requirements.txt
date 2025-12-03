@@ -18,3 +18,24 @@ mysqlclient>=2.2.0
 
 # Filter support
 django-filter>=23.5
+
+<<<<<<< HEAD
+# HTTP requests (for MoMo payment)
+requests>=2.31.0
+=======
+# Production server
+gunicorn>=21.2.0
+
+# Environment variables
+python-decouple>=3.8
+
+# Whitenoise for static files
+whitenoise>=6.6.0
+
+# Excel/PDF generation
+openpyxl>=3.1.0
+reportlab>=4.0.0
+
+# Database URL parsing
+dj-database-url>=2.1.0
+>>>>>>> 87e14d64be8504bd1503d42dba15b8403c32b3a6

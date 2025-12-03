@@ -182,6 +182,17 @@ const CheckoutPage = () => {
             const response = await orderAPI.createOrder(orderData);
 
             if (response && response.id) {
+                // Kiểm tra nếu là thanh toán MoMo
+                if (paymentMethod === 'momo' && response.payUrl) {
+                    // Lưu selectedItemIds vào sessionStorage để xóa sau khi thanh toán thành công
+                    if (selectedItemIds.length > 0) {
+                        sessionStorage.setItem('momoCartItemIds', JSON.stringify(selectedItemIds));
+                    }
+                    // Redirect đến trang thanh toán MoMo
+                    window.location.href = response.payUrl;
+                    return;
+                }
+                
                 // Delete items from cart if they came from cart page
                 if (selectedItemIds.length > 0) {
                     for (const itemId of selectedItemIds) {

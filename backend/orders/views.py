@@ -1,14 +1,17 @@
 from rest_framework import viewsets, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 from uuid import uuid4
 from decimal import Decimal
 from .models import Order, OrderItem, Cart, CartItem
 from .serializers import OrderSerializer, OrderCreateSerializer, CartSerializer, CartItemDetailSerializer
 from products.models import Product, ProductVariant
+from .payment_utils import MoMoPayment
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -418,6 +421,48 @@ class OrderViewSet(viewsets.ViewSet):
                         logger.info(f"Updated product {product.name} stock: {product.stock + quantity} -> {product.stock}")
                     
                     # Lưu ý: sold_count sẽ được cập nhật khi order được delivered, không phải lúc tạo
+                
+                # Xử lý thanh toán MoMo
+                if order.payment_method == 'momo':
+                    try:
+                        # Tạo payment URL từ MoMo
+                        momo_response = MoMoPayment.create_payment(
+                            order_id=order.id,
+                            amount=int(total_amount),
+                            order_info=f"Thanh toan don hang {order.order_code}"
+                        )
+                        
+                        if momo_response.get('resultCode') == 0:
+                            # Lưu thông tin MoMo
+                            order.momo_request_id = momo_response.get('requestId')
+                            order.momo_order_id = momo_response.get('orderId')
+                            order.save(update_fields=['momo_request_id', 'momo_order_id'])
+                            
+                            # Trả về payUrl để redirect
+                            response_data = OrderSerializer(order).data
+                            response_data['payUrl'] = momo_response.get('payUrl')
+                            response_data['deeplink'] = momo_response.get('deeplink')
+                            response_data['qrCodeUrl'] = momo_response.get('qrCodeUrl')
+                            
+                            return Response(response_data, status=status.HTTP_201_CREATED)
+                        else:
+                            # MoMo trả về lỗi
+                            return Response(
+                                {
+                                    'error': f"Lỗi tạo thanh toán MoMo: {momo_response.get('message')}",
+                                    'order': OrderSerializer(order).data
+                                },
+                                status=status.HTTP_400_BAD_REQUEST
+                            )
+                    except Exception as e:
+                        logger.error(f"Error creating MoMo payment: {str(e)}")
+                        return Response(
+                            {
+                                'error': f'Lỗi kết nối MoMo: {str(e)}',
+                                'order': OrderSerializer(order).data
+                            },
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
                 
                 response_serializer = OrderSerializer(order)
                 return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -943,3 +988,118 @@ class OrderViewSet(viewsets.ViewSet):
         response['Content-Disposition'] = f'attachment; filename=bao_cao_{report_type}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pdf'
         response.write(pdf)
         return response
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def momo_callback(request):
+    """
+    Nhận callback từ MoMo sau khi thanh toán
+    """
+    try:
+        data = request.data
+        logger.info(f"MoMo callback received: {data}")
+        
+        # Xác thực signature
+        if not MoMoPayment.verify_signature(data):
+            logger.error("Invalid MoMo signature")
+            return Response(
+                {'message': 'Invalid signature'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Lấy thông tin từ callback
+        result_code = data.get('resultCode')
+        order_id = data.get('orderId')
+        trans_id = data.get('transId')
+        message = data.get('message')
+        
+        # Tìm order
+        try:
+            order = Order.objects.get(id=int(order_id))
+        except (Order.DoesNotExist, ValueError):
+            logger.error(f"Order not found: {order_id}")
+            return Response(
+                {'message': 'Order not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Cập nhật trạng thái thanh toán
+        if result_code == 0:
+            # Thanh toán thành công
+            order.payment_status = 'completed'
+            order.momo_transaction_id = trans_id
+            order.save(update_fields=['payment_status', 'momo_transaction_id'])
+            
+            logger.info(f"Order {order.order_code} payment completed via MoMo")
+            
+            return Response({'message': 'Success'}, status=status.HTTP_200_OK)
+        else:
+            # Thanh toán thất bại
+            order.payment_status = 'failed'
+            order.save(update_fields=['payment_status'])
+            
+            logger.warning(f"Order {order.order_code} payment failed: {message}")
+            
+            return Response({'message': 'Payment failed'}, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        logger.error(f"Error processing MoMo callback: {str(e)}")
+        return Response(
+            {'message': 'Internal error'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_momo_payment_status(request, order_id):
+    """
+    Kiểm tra trạng thái thanh toán MoMo của đơn hàng
+    """
+    try:
+        # Lấy đơn hàng
+        order = Order.objects.get(id=order_id, user=request.user)
+        
+        # Kiểm tra xem đơn hàng có dùng MoMo không
+        if order.payment_method != 'momo':
+            return Response(
+                {'error': 'Đơn hàng không sử dụng thanh toán MoMo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Kiểm tra trạng thái từ MoMo
+        if order.momo_request_id:
+            momo_response = MoMoPayment.check_transaction_status(
+                order_id=order.id,
+                request_id=order.momo_request_id
+            )
+            
+            if momo_response.get('resultCode') == 0:
+                # Cập nhật trạng thái thanh toán
+                order.payment_status = 'completed'
+                order.momo_transaction_id = momo_response.get('transId')
+                order.save(update_fields=['payment_status', 'momo_transaction_id'])
+            
+            return Response({
+                'order': OrderSerializer(order).data,
+                'momo_status': momo_response
+            })
+        else:
+            return Response(
+                {'error': 'Chưa có thông tin thanh toán MoMo'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    except Order.DoesNotExist:
+        return Response(
+            {'error': 'Đơn hàng không tồn tại'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error checking MoMo payment status: {str(e)}")
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

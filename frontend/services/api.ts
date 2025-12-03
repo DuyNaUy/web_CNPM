@@ -521,6 +521,10 @@ export const orderAPI = {
         a.click();
         window.URL.revokeObjectURL(downloadUrl);
         document.body.removeChild(a);
+    },
+
+    checkMoMoStatus: async (orderId: string) => {
+        return await apiRequest(`/orders/momo-status/${orderId}/`);
     }
 };
 
