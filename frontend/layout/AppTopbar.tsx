@@ -298,104 +298,195 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
 
             {/* Profile Dialog */}
             <Dialog
-                header={
-                    <div className="flex align-items-center gap-2">
-                        <i className="pi pi-user text-primary" style={{ fontSize: '1.5rem' }}></i>
-                        <span>Thông Tin Tài Khoản</span>
-                    </div>
-                }
                 visible={profileDialogVisible}
-                style={{ width: '550px' }}
+                style={{ width: '650px' }}
                 onHide={() => setProfileDialogVisible(false)}
                 modal
                 draggable={false}
                 resizable={false}
+                showHeader={false}
+                className="profile-dialog"
             >
-                <div className="flex flex-column gap-4">
-                    {/* Avatar and Email (Read-only) */}
-                    <div className="flex flex-column align-items-center gap-3 p-4 surface-50 border-round">
-                        <Avatar
-                            icon="pi pi-user"
-                            size="xlarge"
-                            shape="circle"
-                            style={{
-                                backgroundColor: 'var(--primary-color)',
-                                color: '#fff',
-                                width: '80px',
-                                height: '80px',
-                                fontSize: '2rem'
-                            }}
-                        />
-                        <div className="text-center">
-                            <div className="font-bold text-2xl mb-2">{user?.full_name || 'User'}</div>
-                            <div className="text-600 text-lg mb-2">{user?.email}</div>
-                            <div className="text-sm">
+                <div className="flex flex-column">
+                    {/* Header with Gradient */}
+                    <div 
+                        className="p-5 border-round-top" 
+                        style={{ 
+                            background: 'linear-gradient(135deg, #FF69B4 0%, #FFB6C1 100%)',
+                            marginTop: '-1.5rem',
+                            marginLeft: '-1.5rem',
+                            marginRight: '-1.5rem'
+                        }}
+                    >
+                        <div className="flex align-items-center justify-content-between mb-3">
+                            <h2 className="text-white m-0 font-bold" style={{ fontSize: '1.8rem' }}>
+                                <i className="pi pi-user-edit mr-2"></i>
+                                Thông Tin Tài Khoản
+                            </h2>
+                            <Button 
+                                icon="pi pi-times" 
+                                rounded 
+                                text 
+                                severity="secondary"
+                                onClick={() => setProfileDialogVisible(false)}
+                                style={{ color: 'white' }}
+                            />
+                        </div>
+                        
+                        {/* Avatar Section */}
+                        <div className="flex align-items-center gap-4 bg-white-alpha-20 p-4 border-round-lg">
+                            <Avatar
+                                icon="pi pi-user"
+                                size="xlarge"
+                                shape="circle"
+                                style={{
+                                    backgroundColor: '#fff',
+                                    color: '#FF69B4',
+                                    width: '90px',
+                                    height: '90px',
+                                    fontSize: '2.5rem',
+                                    boxShadow: '0 8px 16px rgba(0,0,0,0.15)'
+                                }}
+                            />
+                            <div className="flex-1">
+                                <div className="text-white font-bold mb-1" style={{ fontSize: '1.5rem' }}>
+                                    {user?.full_name || 'User'}
+                                </div>
+                                <div className="text-white-alpha-90 mb-2" style={{ fontSize: '1.1rem' }}>
+                                    <i className="pi pi-envelope mr-2"></i>
+                                    {user?.email}
+                                </div>
                                 <span
-                                    className="px-3 py-1 border-round font-semibold"
+                                    className="px-3 py-2 border-round-lg font-semibold inline-flex align-items-center"
                                     style={{
-                                        backgroundColor: user?.role === 'admin' ? 'var(--red-100)' : 'var(--blue-100)',
-                                        color: user?.role === 'admin' ? 'var(--red-700)' : 'var(--blue-700)'
+                                        backgroundColor: 'rgba(255,255,255,0.3)',
+                                        color: 'white',
+                                        backdropFilter: 'blur(10px)'
                                     }}
                                 >
                                     <i className={`pi ${user?.role === 'admin' ? 'pi-shield' : 'pi-user'} mr-2`}></i>
-                                    {user?.role === 'admin' ? 'Quản trị viên' : 'Khách hàng'}
+                                    {user?.role === 'admin' ? '👑 Quản trị viên' : '🧸 Khách hàng'}
                                 </span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Editable Fields */}
-                    <div className="flex flex-column gap-3">
-                        <div className="text-lg font-semibold mb-2 border-bottom-1 surface-border pb-2">
-                            <i className="pi pi-pencil mr-2 text-primary"></i>
-                            Chỉnh sửa thông tin
-                        </div>
-
-                        <div className="flex flex-column gap-2">
-                            <label htmlFor="full_name" className="font-semibold text-900">
-                                <i className="pi pi-user mr-2"></i>
-                                Họ và Tên <span className="text-red-500">*</span>
-                            </label>
-                            <InputText id="full_name" value={formData.full_name} onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} placeholder="Nhập họ và tên" className="p-inputtext-lg" />
-                        </div>
-
-                        <div className="flex flex-column gap-2">
-                            <label htmlFor="phone" className="font-semibold text-900">
-                                <i className="pi pi-phone mr-2"></i>
-                                Số điện thoại <span className="text-red-500">*</span>
-                            </label>
-                            <InputText id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="Nhập số điện thoại" maxLength={10} className="p-inputtext-lg" />
-                        </div>
-
-                        <div className="flex flex-column gap-2">
-                            <label htmlFor="address" className="font-semibold text-900">
-                                <i className="pi pi-map-marker mr-2"></i>
-                                Địa chỉ
-                            </label>
-                            <InputText id="address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} placeholder="Nhập địa chỉ" className="p-inputtext-lg" />
-                        </div>
-
-                        <div className="surface-50 p-3 border-round">
-                            <div className="text-sm font-semibold text-600 mb-2">Thông tin không thể thay đổi</div>
-                            <div className="flex flex-column gap-2">
-                                <div className="flex align-items-center gap-2">
-                                    <i className="pi pi-envelope text-500"></i>
-                                    <span className="font-semibold text-500">Email:</span>
-                                    <span className="text-900">{user?.email || '---'}</span>
+                    {/* Form Content */}
+                    <div className="p-5">
+                        <div className="flex flex-column gap-4">
+                            {/* Editable Section */}
+                            <div className="surface-50 p-4 border-round-xl border-1 border-pink-200">
+                                <div className="text-xl font-bold mb-4 text-pink-600">
+                                    <i className="pi pi-pencil mr-2"></i>
+                                    ✏️ Chỉnh sửa thông tin
                                 </div>
-                                <div className="flex align-items-center gap-2">
-                                    <i className="pi pi-id-card text-500"></i>
-                                    <span className="font-semibold text-500">Username:</span>
-                                    <span className="text-900">{user?.username || '---'}</span>
+
+                                <div className="grid">
+                                    <div className="col-12">
+                                        <div className="flex flex-column gap-2">
+                                            <label htmlFor="full_name" className="font-bold text-900" style={{ fontSize: '0.95rem' }}>
+                                                <i className="pi pi-user mr-2 text-pink-500"></i>
+                                                Họ và Tên <span className="text-red-500">*</span>
+                                            </label>
+                                            <InputText 
+                                                id="full_name" 
+                                                value={formData.full_name} 
+                                                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })} 
+                                                placeholder="Nhập họ và tên đầy đủ" 
+                                                className="p-inputtext-lg"
+                                                style={{ borderColor: '#FFB6C1', borderWidth: '2px' }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="col-12 md:col-6">
+                                        <div className="flex flex-column gap-2">
+                                            <label htmlFor="phone" className="font-bold text-900" style={{ fontSize: '0.95rem' }}>
+                                                <i className="pi pi-phone mr-2 text-pink-500"></i>
+                                                Số điện thoại <span className="text-red-500">*</span>
+                                            </label>
+                                            <InputText 
+                                                id="phone" 
+                                                value={formData.phone} 
+                                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })} 
+                                                placeholder="Nhập số điện thoại" 
+                                                maxLength={10}
+                                                className="p-inputtext-lg"
+                                                style={{ borderColor: '#FFB6C1', borderWidth: '2px' }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="col-12 md:col-6">
+                                        <div className="flex flex-column gap-2">
+                                            <label htmlFor="address" className="font-bold text-900" style={{ fontSize: '0.95rem' }}>
+                                                <i className="pi pi-map-marker mr-2 text-pink-500"></i>
+                                                Địa chỉ
+                                            </label>
+                                            <InputText 
+                                                id="address" 
+                                                value={formData.address} 
+                                                onChange={(e) => setFormData({ ...formData, address: e.target.value })} 
+                                                placeholder="Nhập địa chỉ của bạn" 
+                                                className="p-inputtext-lg"
+                                                style={{ borderColor: '#FFB6C1', borderWidth: '2px' }}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 justify-content-end mt-4 pt-3 border-top-1 surface-border">
-                        <Button label="Hủy" icon="pi pi-times" severity="secondary" onClick={() => setProfileDialogVisible(false)} disabled={loading} className="px-4" />
-                        <Button label="Lưu thay đổi" icon="pi pi-check" onClick={handleUpdateProfile} loading={loading} disabled={loading || !formData.full_name || !formData.phone} className="px-4" />
+                            {/* Read-only Section */}
+                            <div className="surface-100 p-4 border-round-xl border-1 border-200">
+                                <div className="text-lg font-bold mb-3 text-600">
+                                    <i className="pi pi-lock mr-2"></i>
+                                    🔒 Thông tin không thể thay đổi
+                                </div>
+                                <div className="grid">
+                                    <div className="col-12 md:col-6">
+                                        <div className="flex flex-column gap-1 p-3 bg-white border-round-lg">
+                                            <span className="text-500 font-semibold text-sm">
+                                                <i className="pi pi-envelope mr-2"></i>Email
+                                            </span>
+                                            <span className="text-900 font-bold">{user?.email || '---'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="col-12 md:col-6">
+                                        <div className="flex flex-column gap-1 p-3 bg-white border-round-lg">
+                                            <span className="text-500 font-semibold text-sm">
+                                                <i className="pi pi-id-card mr-2"></i>Username
+                                            </span>
+                                            <span className="text-900 font-bold">{user?.username || '---'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex gap-3 justify-content-end pt-3">
+                                <Button 
+                                    label="Hủy" 
+                                    icon="pi pi-times" 
+                                    severity="secondary" 
+                                    onClick={() => setProfileDialogVisible(false)} 
+                                    disabled={loading}
+                                    className="px-5 py-3"
+                                    outlined
+                                />
+                                <Button 
+                                    label="💾 Lưu thay đổi" 
+                                    icon="pi pi-check" 
+                                    onClick={handleUpdateProfile} 
+                                    loading={loading} 
+                                    disabled={loading || !formData.full_name || !formData.phone}
+                                    className="px-5 py-3"
+                                    style={{ 
+                                        background: 'linear-gradient(135deg, #FF69B4 0%, #FF1493 100%)',
+                                        border: 'none'
+                                    }}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
             </Dialog>

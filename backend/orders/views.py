@@ -575,15 +575,8 @@ class OrderViewSet(viewsets.ViewSet):
             order.status = new_status
             order.save()
             
-            # Cập nhật sold_count khi order được delivered
-            if new_status == 'delivered' and old_status != 'delivered':
-                # Lấy tất cả items trong order
-                for order_item in order.items.all():
-                    product = order_item.product
-                    if product:
-                        product.sold_count += order_item.quantity
-                        product.save(update_fields=['sold_count'])
-                        logger.info(f"Updated product {product.name} sold_count: +{order_item.quantity}")
+            # NOTE: sold_count được tự động cập nhật bởi signal trong orders/signals.py
+            # Không cần cập nhật thủ công ở đây để tránh duplicate update (tăng gấp đôi)
             
             serializer = OrderSerializer(order)
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -609,16 +602,98 @@ class OrderViewSet(viewsets.ViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         
+        from django.db.models import Sum, Count, Q
+        from django.db.models.functions import TruncMonth, TruncWeek
+        from datetime import datetime, timedelta
+        from collections import defaultdict
+        
         total_orders = Order.objects.count()
         pending_orders = Order.objects.filter(status='pending').count()
         completed_orders = Order.objects.filter(status='delivered').count()
         total_revenue = sum(order.total_amount for order in Order.objects.all())
+        
+        # Tính tỷ lệ hoàn thành
+        completion_rate = 0
+        if total_orders > 0:
+            completion_rate = (completed_orders / total_orders) * 100
+        
+        # Doanh thu theo tháng (6 tháng gần nhất)
+        revenue_by_month = []
+        current_date = datetime.now()
+        for i in range(5, -1, -1):
+            month_date = current_date - timedelta(days=i*30)
+            month_str = f"Tháng {month_date.month}"
+            month_revenue = Order.objects.filter(
+                created_at__year=month_date.year,
+                created_at__month=month_date.month
+            ).aggregate(total=Sum('total_amount'))['total'] or 0
+            revenue_by_month.append({
+                'month': month_str,
+                'revenue': float(month_revenue)
+            })
+        
+        # Số đơn hàng theo tuần (4 tuần gần nhất)
+        orders_by_week = []
+        for i in range(3, -1, -1):
+            week_start = current_date - timedelta(weeks=i+1)
+            week_end = current_date - timedelta(weeks=i)
+            week_label = f"Tuần {4-i}"
+            week_orders = Order.objects.filter(
+                created_at__gte=week_start,
+                created_at__lt=week_end
+            ).count()
+            orders_by_week.append({
+                'week': week_label,
+                'orders': week_orders
+            })
+        
+        # Doanh thu theo kích thước gấu (từ ProductVariant)
+        revenue_by_size = []
+        size_stats = OrderItem.objects.filter(
+            unit__isnull=False
+        ).values('unit').annotate(
+            total_revenue=Sum('product_price'),
+            total_count=Count('id')
+        ).order_by('-total_revenue')
+        
+        for stat in size_stats:
+            if stat['unit']:
+                revenue_by_size.append({
+                    'size': stat['unit'],
+                    'revenue': float(stat['total_revenue']),
+                    'count': stat['total_count']
+                })
+        
+        # Top sản phẩm bán chạy
+        top_products = []
+        product_stats = OrderItem.objects.values(
+            'product__id',
+            'product__name',
+            'product__category__name'
+        ).annotate(
+            total_sold=Sum('quantity'),
+            total_revenue=Sum('product_price')
+        ).order_by('-total_sold')[:10]
+        
+        for stat in product_stats:
+            top_products.append({
+                'id': stat['product__id'],
+                'name': stat['product__name'],
+                'category': stat['product__category__name'] or 'Chưa phân loại',
+                'sold': stat['total_sold'],
+                'revenue': float(stat['total_revenue'])
+            })
         
         return Response({
             'total_orders': total_orders,
             'pending_orders': pending_orders,
             'completed_orders': completed_orders,
             'total_revenue': float(total_revenue),
+            'completion_rate': round(completion_rate, 1),
+            'revenue_by_month': revenue_by_month,
+            'orders_by_week': orders_by_week,
+            'revenue_by_size': revenue_by_size,
+            'top_products': top_products,
         })
     
     @action(detail=False, methods=['get'])

@@ -505,8 +505,8 @@ const ProductsPage = () => {
     const onGallerySelect = (e: any) => {
         const files = e.files;
         if (files && files.length > 0) {
-            // Append new files to existing ones
-            setAdditionalImages(prev => [...prev, ...files]);
+            // Replace with new files instead of appending to prevent duplicates
+            setAdditionalImages(files);
         }
     };
 

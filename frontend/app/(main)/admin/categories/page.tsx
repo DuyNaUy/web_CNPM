@@ -170,6 +170,19 @@ const CategoriesPage = () => {
             setLoading(true);
             const response = await categoryAPI.delete(category.id);
 
+            // Kiểm tra nếu có lỗi từ backend
+            if (response.error) {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Lỗi',
+                    detail: response.error,
+                    life: 5000
+                });
+                setDeleteCategoryDialog(false);
+                return;
+            }
+
+            // Thành công
             toast.current?.show({
                 severity: 'success',
                 summary: 'Thành công',
