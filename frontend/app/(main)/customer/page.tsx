@@ -364,7 +364,7 @@ const CustomerHomePage = () => {
                         <div className="surface-card shadow-3 p-5 border-round-xl hover:shadow-5 transition-all transition-duration-300">
                             <i className="pi pi-phone text-5xl mb-3" style={{ color: '#ff69b4' }}></i>
                             <h4 className="text-900 mb-2 text-xl font-semibold">Hotline</h4>
-                            <p className="text-600 text-xl font-semibold" style={{ color: '#ff69b4' }}>0866 096 023</p>
+                            <p className="text-600 text-xl font-semibold" style={{ color: '#ff69b4' }}>0899456004</p>
                         </div>
                     </div>
                     <div className="col-12 md:col-4">
@@ -378,7 +378,7 @@ const CustomerHomePage = () => {
                         <div className="surface-card shadow-3 p-5 border-round-xl hover:shadow-5 transition-all transition-duration-300">
                             <i className="pi pi-map-marker text-5xl mb-3" style={{ color: '#ff69b4' }}></i>
                             <h4 className="text-900 mb-2 text-xl font-semibold">Địa chỉ</h4>
-                            <p className="text-600 text-xl font-semibold" style={{ color: '#ff69b4' }}>123 Đường Tây Sơn, Đống Đa, Hà Nội</p>
+                            <p className="text-600 text-xl font-semibold" style={{ color: '#ff69b4' }}>Mỹ Đình, Hà Nội</p>
                         </div>
                     </div>
                 </div>
