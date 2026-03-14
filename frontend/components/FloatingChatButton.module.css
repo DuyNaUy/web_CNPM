@@ -1,0 +1,263 @@
+.container {
+  position: fixed;
+  right: 30px;
+  bottom: 40px;
+  z-index: 999;
+  pointer-events: auto;
+}
+
+.wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.floatingButton {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #FF6B9D 0%, #E63A6C 100%);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  box-shadow: 0 4px 16px rgba(255, 107, 157, 0.4);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.floatingButton:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(255, 107, 157, 0.6);
+  background: linear-gradient(135deg, #E63A6C 0%, #D61A5C 100%);
+}
+
+.floatingButton:active {
+  transform: scale(0.95);
+}
+
+.floatingButton.active {
+  background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+  box-shadow: 0 6px 24px rgba(40, 167, 69, 0.6);
+}
+
+.iconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.teddy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  animation: bounceTeddy 2s infinite;
+}
+
+.chat {
+  position: absolute;
+  font-size: 16px;
+  bottom: -2px;
+  right: -2px;
+  background: #FFD700;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: pulse 2s infinite;
+}
+
+@keyframes bounceTeddy {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+
+.textLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  background: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  animation: slideInText 0.4s ease-in-out;
+}
+
+@keyframes slideInText {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ripple {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: rippleAnimation 1.5s infinite;
+}
+
+@keyframes rippleAnimation {
+  0% {
+    width: 60px;
+    height: 60px;
+    opacity: 1;
+  }
+  100% {
+    width: 120px;
+    height: 120px;
+    opacity: 0;
+  }
+}
+
+/* Tooltip */
+.floatingButton::after {
+  content: 'Tư vấn bán hàng';
+  position: absolute;
+  right: 80px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(230, 58, 108, 0.9);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  z-index: 1000;
+  font-weight: 600;
+}
+
+.floatingButton:hover::after {
+  opacity: 1;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .container {
+    right: 20px;
+    bottom: 35px;
+  }
+
+  .textLabel {
+    font-size: 13px;
+    padding: 8px 12px;
+  }
+
+  .floatingButton {
+    width: 54px;
+    height: 54px;
+    font-size: 24px;
+  }
+
+  .ripple {
+    width: 54px;
+    height: 54px;
+  }
+
+  @keyframes rippleAnimation {
+    0% {
+      width: 54px;
+      height: 54px;
+      opacity: 1;
+    }
+    100% {
+      width: 108px;
+      height: 108px;
+      opacity: 0;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    right: 15px;
+    bottom: 20px;
+  }
+
+  .wrapper {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .textLabel {
+    font-size: 12px;
+    padding: 6px 10px;
+    text-align: center;
+  }
+
+  .floatingButton {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+  }
+
+  .floatingButton::after {
+    left: 60px;
+    font-size: 11px;
+  }
+
+  .ripple {
+    width: 50px;
+    height: 50px;
+  }
+
+  @keyframes rippleAnimation {
+    0% {
+      width: 50px;
+      height: 50px;
+      opacity: 1;
+    }
+    100% {
+      width: 100px;
+      height: 100px;
+      opacity: 0;
+    }
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .floatingButton::after {
+    background: rgba(255, 255, 255, 0.9);
+    color: #000;
+  }
+}

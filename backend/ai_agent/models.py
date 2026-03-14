@@ -1,0 +1,122 @@
+from django.db import models
+from django.utils import timezone
+from users.models import User
+from products.models import Product
+import json
+
+
+class ConversationSession(models.Model):
+    """Phiên hội thoại với AI Agent"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_conversations', null=True, blank=True)
+    session_id = models.CharField(max_length=100, unique=True)
+    title = models.CharField(max_length=255, blank=True, default="Tư vấn bán hàng")
+    context = models.TextField(blank=True, help_text="JSON context for conversation history")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+        verbose_name = 'Phiên hội thoại AI'
+        verbose_name_plural = 'Phiên hội thoại AI'
+
+    def __str__(self):
+        return f"{self.user.username} - {self.session_id}"
+
+    def get_context(self):
+        """Lấy context dưới dạng dict"""
+        try:
+            return json.loads(self.context) if self.context else {}
+        except json.JSONDecodeError:
+            return {}
+
+    def set_context(self, data):
+        """Lưu context dưới dạng JSON"""
+        self.context = json.dumps(data, ensure_ascii=False)
+
+    def add_message(self, role, content):
+        """Thêm message vào conversation history"""
+        ctx = self.get_context()
+        if 'messages' not in ctx:
+            ctx['messages'] = []
+        ctx['messages'].append({
+            'role': role,
+            'content': content,
+            'timestamp': timezone.now().isoformat()
+        })
+        self.set_context(ctx)
+        self.save()
+
+
+class AIRecommendation(models.Model):
+    """Lưu trữ sản phẩm được AI đề xuất"""
+    conversation = models.ForeignKey(ConversationSession, on_delete=models.CASCADE, related_name='recommendations')
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    reason = models.TextField(help_text="Lý do AI đề xuất sản phẩm này")
+    confidence_score = models.FloatField(default=0.5, help_text="Độ tin cậy của đề xuất (0-1)")
+    quantity = models.PositiveIntegerField(default=1, help_text="Số lượng được đề xuất")
+    is_accepted = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Đề xuất sản phẩm AI'
+        verbose_name_plural = 'Đề xuất sản phẩm AI'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.conversation.session_id} - {self.product.name}"
+
+
+class AutomatedOrder(models.Model):
+    """Đơn hàng được tạo tự động từ AI Agent"""
+    STATUS_CHOICES = [
+        ('draft', 'Nháp'),
+        ('confirmed', 'Đã xác nhận'),
+        ('created', 'Tạo đơn hàng'),
+        ('cancelled', 'Đã hủy'),
+    ]
+
+    conversation = models.ForeignKey(ConversationSession, on_delete=models.CASCADE, related_name='automated_orders')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    
+    # Thông tin từ AI
+    suggested_products = models.TextField(help_text="JSON array of suggested products")
+    ai_notes = models.TextField(blank=True, help_text="Ghi chú từ AI về đơn hàng")
+    
+    # Thông tin đơn hàng
+    full_name = models.CharField(max_length=255, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.TextField(blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    district = models.CharField(max_length=100, blank=True)
+    
+    # Tính toán
+    estimated_total = models.DecimalField(max_digits=15, decimal_places=0, default=0)
+    shipping_fee = models.DecimalField(max_digits=15, decimal_places=0, default=30000)
+    
+    # Link tới đơn hàng thực tế nếu được tạo
+    created_order_id = models.CharField(max_length=50, blank=True, null=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Đơn hàng tự động AI'
+        verbose_name_plural = 'Đơn hàng tự động AI'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"AutoOrder-{self.id} ({self.user.username})"
+
+    def get_suggested_products(self):
+        """Lấy danh sách sản phẩm được đề xuất"""
+        try:
+            return json.loads(self.suggested_products) if self.suggested_products else []
+        except json.JSONDecodeError:
+            return []
+
+    def set_suggested_products(self, products_list):
+        """Lưu danh sách sản phẩm dưới dạng JSON"""
+        self.suggested_products = json.dumps(products_list, ensure_ascii=False)

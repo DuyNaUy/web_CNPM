@@ -23,7 +23,7 @@ interface Order {
     id: number;
     order_code: string;
     created_at: string;
-    status: 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled';
+    status: 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled' | 'returned';
     total_amount: number;
     items: OrderItem[];
     address: string;

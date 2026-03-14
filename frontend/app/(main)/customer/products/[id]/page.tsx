@@ -11,6 +11,10 @@ import React, { useRef, useState, useEffect, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import { productAPI, cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
+import { 
+  addItemToLocalCart, 
+  getLocalCartTotalQuantity 
+} from '@/services/localCart';
 
 interface ProductVariant {
     id?: number;
@@ -43,6 +47,7 @@ interface Product {
     max_price?: number;
     unit?: string;
     product_images?: ProductImage[];
+    main_image_url?: string;
 }
 
 const ProductDetailPage = ({ params }: { params: { id: string } }) => {
@@ -141,21 +146,6 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
     };
 
     const addToCart = async () => {
-        // Kiểm tra đăng nhập
-        const user = getStoredUser();
-        if (!user) {
-            toast.current?.show({
-                severity: 'warn',
-                summary: 'Cảnh báo',
-                detail: 'Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng',
-                life: 3000
-            });
-            setTimeout(() => {
-                router.push('/auth/login');
-            }, 1000);
-            return;
-        }
-
         // Nếu có variants, bắt buộc phải chọn size
         if (product.variants && product.variants.length > 0) {
             const selectedVariant = product.variants.find(v => v.size === selectedSize);
@@ -192,30 +182,67 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
             return;
         }
 
-        // Call API to add to cart using cartAPI
         try {
-            const response = await cartAPI.addItem(product.id, quantity, selectedSize || product.unit || 'default');
+            const user = getStoredUser();
+            const sizeStr = selectedSize || product.unit || 'default';
             
-            if (response && response.id) {
-                // Update cart count in top bar
-                if (response.total_quantity) {
-                    setCartCount(response.total_quantity);
+            // Lấy giá dựa trên size
+            let itemPrice = product.price;
+            if (selectedSize && product.variants && product.variants.length > 0) {
+                const selectedVariant = product.variants.find(v => v.size === selectedSize);
+                if (selectedVariant) {
+                    itemPrice = selectedVariant.price;
                 }
+            }
+            
+            if (user) {
+                // User đã đăng nhập - gọi API backend
+                const response = await cartAPI.addItem(product.id, quantity, sizeStr);
+                
+                if (response && response.id) {
+                    // Update cart count in top bar
+                    if (response.total_quantity) {
+                        setCartCount(response.total_quantity);
+                    }
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã thêm vào giỏ',
+                        detail: `Đã thêm ${quantity} ${product.name} (${sizeStr}) vào giỏ hàng`,
+                        life: 3000
+                    });
+                    setQuantity(1);
+                    setSelectedSize('');
+                } else if (response && response.error) {
+                    toast.current?.show({
+                        severity: 'error',
+                        summary: 'Lỗi',
+                        detail: response.error || 'Không thể thêm vào giỏ hàng',
+                        life: 3000
+                    });
+                }
+            } else {
+                // User chưa đăng nhập - lưu vào localStorage
+                addItemToLocalCart(
+                    product.id,
+                    product.name,
+                    itemPrice,
+                    quantity,
+                    sizeStr,
+                    product.main_image_url || ''
+                );
+                
+                // Update cart count từ localStorage
+                const newTotal = getLocalCartTotalQuantity();
+                setCartCount(newTotal);
+                
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Đã thêm vào giỏ',
-                    detail: `Đã thêm ${quantity} ${product.name} (${selectedSize}) vào giỏ hàng`,
+                    detail: `Đã thêm ${quantity} ${product.name} (${sizeStr}) vào giỏ hàng (không cần đăng nhập)`,
                     life: 3000
                 });
                 setQuantity(1);
                 setSelectedSize('');
-            } else if (response && response.error) {
-                toast.current?.show({
-                    severity: 'error',
-                    summary: 'Lỗi',
-                    detail: response.error || 'Không thể thêm vào giỏ hàng',
-                    life: 3000
-                });
             }
         } catch (err: any) {
             console.error('Error adding to cart:', err);

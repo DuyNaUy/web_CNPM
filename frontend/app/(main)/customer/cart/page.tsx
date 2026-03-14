@@ -8,8 +8,15 @@ import { Toast } from 'primereact/toast';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import React, { useRef, useState, useEffect, useContext } from 'react';
 import Link from 'next/link';
-import { cartAPI } from '@/services/api';
+import { cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
+import { 
+  getLocalCart, 
+  updateLocalCartItemQuantity, 
+  removeItemFromLocalCart,
+  clearLocalCart,
+  getLocalCartTotalQuantity
+} from '@/services/localCart';
 
 interface CartItem {
     id: number;
@@ -35,6 +42,7 @@ const CartPage = () => {
     const { setCartCount } = useContext(LayoutContext);
     const [cartData, setCartData] = useState<Cart | null>(null);
     const [loading, setLoading] = useState(true);
+    const [isAnonymousCart, setIsAnonymousCart] = useState(false);
     const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
     const toast = useRef<Toast>(null);
 
@@ -45,18 +53,78 @@ const CartPage = () => {
     const loadCart = async () => {
         setLoading(true);
         try {
-            const response = await cartAPI.getCart();
-            if (response) {
-                setCartData(response);
+            const user = getStoredUser();
+            
+            if (user) {
+                // User đã đăng nhập - load từ backend API
+                setIsAnonymousCart(false);
+                const response = await cartAPI.getCart();
+                if (response) {
+                    setCartData(response);
+                    setCartCount(response.total_quantity || 0);
+                }
+            } else {
+                // User chưa đăng nhập - load từ localStorage
+                setIsAnonymousCart(true);
+                const localCart = getLocalCart();
+                const items = Object.values(localCart).map((item, idx) => ({
+                    id: idx,
+                    product_id: item.product_id,
+                    product_name: item.name,
+                    product_price: item.price,
+                    quantity: item.qty || item.quantity,
+                    product_image: item.image || '/demo/images/product/placeholder.png',
+                    unit: item.unit,
+                    total_price: (item.price * (item.qty || item.quantity)),
+                    available_stock: 999, // Fake stock cho localStorage items
+                    is_available: true
+                }));
+                
+                const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+                const totalPrice = items.reduce((sum, item) => sum + item.total_price, 0);
+                
+                setCartData({
+                    id: 0,
+                    items: items,
+                    total_quantity: totalQuantity,
+                    total_price: totalPrice
+                });
+                setCartCount(totalQuantity);
             }
         } catch (error) {
             console.error('Error loading cart:', error);
-            toast.current?.show({
-                severity: 'error',
-                summary: 'Lỗi',
-                detail: 'Không thể tải giỏ hàng',
-                life: 3000
-            });
+            
+            // Fallback: try to load from localStorage
+            const localCart = getLocalCart();
+            if (Object.keys(localCart).length > 0) {
+                setIsAnonymousCart(true);
+                const items = Object.values(localCart).map((item, idx) => ({
+                    id: idx,
+                    product_id: item.product_id,
+                    product_name: item.name,
+                    product_price: item.price,
+                    quantity: item.qty || item.quantity,
+                    product_image: item.image || '/demo/images/product/placeholder.png',
+                    unit: item.unit,
+                    total_price: (item.price * (item.qty || item.quantity)),
+                    available_stock: 999,
+                    is_available: true
+                }));
+                
+                setCartData({
+                    id: 0,
+                    items: items,
+                    total_quantity: getLocalCartTotalQuantity(),
+                    total_price: items.reduce((sum, item) => sum + item.total_price, 0)
+                });
+            } else {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Lỗi',
+                    detail: 'Không thể tải giỏ hàng',
+                    life: 3000
+                });
+            }
         } finally {
             setLoading(false);
         }
@@ -69,15 +137,34 @@ const CartPage = () => {
         }
 
         try {
-            const response = await cartAPI.updateItem(itemId, newQuantity);
-            if (response) {
-                setCartData(response);
-                toast.current?.show({
-                    severity: 'success',
-                    summary: 'Đã cập nhật',
-                    detail: 'Số lượng sản phẩm đã được cập nhật',
-                    life: 2000
-                });
+            if (isAnonymousCart) {
+                // Update localStorage cart
+                const item = cartData?.items.find(i => i.id === itemId);
+                if (item) {
+                    updateLocalCartItemQuantity(item.product_id, newQuantity);
+                    
+                    // Reload cart from localStorage
+                    loadCart();
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã cập nhật',
+                        detail: 'Số lượng sản phẩm đã được cập nhật',
+                        life: 2000
+                    });
+                }
+            } else {
+                // Update API cart
+                const response = await cartAPI.updateItem(itemId, newQuantity);
+                if (response) {
+                    setCartData(response);
+                    setCartCount(response.total_quantity || 0);
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã cập nhật',
+                        detail: 'Số lượng sản phẩm đã được cập nhật',
+                        life: 2000
+                    });
+                }
             }
         } catch (error) {
             console.error('Error updating quantity:', error);
@@ -107,19 +194,35 @@ const CartPage = () => {
 
     const removeItem = async (itemId: number) => {
         try {
-            const response = await cartAPI.removeItem(itemId);
-            if (response) {
-                setCartData(response);
-                // Update topbar cart count
-                if (response.total_quantity !== undefined) {
-                    setCartCount(response.total_quantity);
+            if (isAnonymousCart) {
+                // Remove from localStorage cart
+                const item = cartData?.items.find(i => i.id === itemId);
+                if (item) {
+                    removeItemFromLocalCart(item.product_id);
+                    loadCart();
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã xóa',
+                        detail: 'Sản phẩm đã được xóa khỏi giỏ hàng',
+                        life: 3000
+                    });
                 }
-                toast.current?.show({
-                    severity: 'success',
-                    summary: 'Đã xóa',
-                    detail: 'Sản phẩm đã được xóa khỏi giỏ hàng',
-                    life: 3000
-                });
+            } else {
+                // Remove from API cart
+                const response = await cartAPI.removeItem(itemId);
+                if (response) {
+                    setCartData(response);
+                    // Update topbar cart count
+                    if (response.total_quantity !== undefined) {
+                        setCartCount(response.total_quantity);
+                    }
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã xóa',
+                        detail: 'Sản phẩm đã được xóa khỏi giỏ hàng',
+                        life: 3000
+                    });
+                }
             }
         } catch (error) {
             console.error('Error removing item:', error);
@@ -139,20 +242,33 @@ const CartPage = () => {
             icon: 'pi pi-exclamation-triangle',
             accept: async () => {
                 try {
-                    const response = await cartAPI.clearCart();
-                    if (response) {
-                        setCartData(response);
-                        // Update topbar cart count
-                        if (response.total_quantity !== undefined) {
-                            setCartCount(response.total_quantity);
-                        }
-                        toast.current?.show({
-                            severity: 'success',
-                            summary: 'Đã xóa',
-                            detail: 'Giỏ hàng đã được làm trống',
-                            life: 3000
+                    if (isAnonymousCart) {
+                        // Clear localStorage cart
+                        clearLocalCart();
+                        setCartData({
+                            id: 0,
+                            items: [],
+                            total_quantity: 0,
+                            total_price: 0
                         });
+                        setCartCount(0);
+                    } else {
+                        // Clear API cart
+                        const response = await cartAPI.clearCart();
+                        if (response) {
+                            setCartData(response);
+                            // Update topbar cart count
+                            if (response.total_quantity !== undefined) {
+                                setCartCount(response.total_quantity);
+                            }
+                        }
                     }
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã xóa',
+                        detail: 'Giỏ hàng đã được làm trống',
+                        life: 3000
+                    });
                 } catch (error) {
                     console.error('Error clearing cart:', error);
                     toast.current?.show({
@@ -230,7 +346,7 @@ const CartPage = () => {
 
     const onSelectionChange = (e: any) => {
         // e.value contains the array of selected CartItem objects
-        const selectedIds = new Set(e.value.map((item: CartItem) => item.id));
+        const selectedIds = new Set<number>(e.value.map((item: CartItem) => item.id));
         setSelectedItems(selectedIds);
     };
 
@@ -251,16 +367,30 @@ const CartPage = () => {
             icon: 'pi pi-exclamation-triangle',
             accept: async () => {
                 try {
-                    for (const itemId of selectedItems) {
-                        await cartAPI.removeItem(itemId);
+                    if (isAnonymousCart) {
+                        // Remove from localStorage cart
+                        for (const itemId of Array.from(selectedItems)) {
+                            const item = cartData?.items.find(i => i.id === itemId);
+                            if (item) {
+                                removeItemFromLocalCart(item.product_id);
+                            }
+                        }
+                        await loadCart();
+                    } else {
+                        // Remove from API cart
+                        for (const itemId of Array.from(selectedItems)) {
+                            await cartAPI.removeItem(itemId);
+                        }
+                        await loadCart();
+                        
+                        // Update topbar cart count after deletion
+                        const updatedCart = await cartAPI.getCart();
+                        if (updatedCart && updatedCart.total_quantity !== undefined) {
+                            setCartCount(updatedCart.total_quantity);
+                        }
                     }
-                    await loadCart();
+                    
                     setSelectedItems(new Set());
-                    // Update topbar cart count after deletion
-                    const updatedCart = await cartAPI.getCart();
-                    if (updatedCart && updatedCart.total_quantity !== undefined) {
-                        setCartCount(updatedCart.total_quantity);
-                    }
                     toast.current?.show({
                         severity: 'success',
                         summary: 'Đã xóa',
@@ -333,6 +463,15 @@ const CartPage = () => {
 
             <div className="col-12">
                 <div className="card">
+                    {isAnonymousCart && (
+                        <div className="bg-blue-100 border-1 border-blue-300 border-round p-3 mb-4 flex align-items-center gap-3">
+                            <i className="pi pi-info-circle text-blue-600"></i>
+                            <div>
+                                <div className="font-semibold text-blue-900">Bạn đang duyệt dưới dạng khách vãng lai</div>
+                                <div className="text-sm text-blue-700">Giỏ hàng của bạn được lưu trên thiết bị này. Đăng nhập để đồng bộ hóa giỏ hàng trên tất cả thiết bị.</div>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex justify-content-between align-items-center mb-4">
                         <h5 className="m-0">Giỏ Hàng Của Bạn</h5>
                         <div className="flex gap-2">
@@ -358,6 +497,7 @@ const CartPage = () => {
                             <DataTable 
                                 value={cartItems} 
                                 responsiveLayout="scroll" 
+                                selectionMode="multiple"
                                 selection={cartItems.filter(item => selectedItems.has(item.id))}
                                 onSelectionChange={onSelectionChange}
                                 rowClassName={(data) => !data.is_available ? 'surface-100' : ''}

@@ -14,6 +14,7 @@ import { Toast } from 'primereact/toast';
 import { Avatar } from 'primereact/avatar';
 import { Dropdown } from 'primereact/dropdown';
 import { authAPI, getStoredUser, removeAuthTokens, categoryAPI, cartAPI } from '../services/api';
+import { getLocalCartTotalQuantity } from '../services/localCart';
 
 const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
     const { layoutConfig, layoutState, onMenuToggle, showProfileSidebar, role, setRole, cartCount, setCartCount } = useContext(LayoutContext);
@@ -58,12 +59,24 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
 
     const loadCartCount = async () => {
         try {
-            const response = await cartAPI.getCart();
-            if (response && response.total_quantity) {
-                setCartCount(response.total_quantity);
+            const user = getStoredUser();
+            
+            if (user) {
+                // User đã đăng nhập - load từ API
+                const response = await cartAPI.getCart();
+                if (response && response.total_quantity) {
+                    setCartCount(response.total_quantity);
+                }
+            } else {
+                // User chưa đăng nhập - load từ localStorage
+                const total = getLocalCartTotalQuantity();
+                setCartCount(total);
             }
         } catch (error) {
             console.error('Error loading cart count:', error);
+            // Fallback: load từ localStorage
+            const total = getLocalCartTotalQuantity();
+            setCartCount(total);
         }
     };
 

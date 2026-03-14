@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'categories',
     'products',
     'orders',
+    'ai_agent',
 ]
 
 MIDDLEWARE = [
@@ -242,3 +243,7 @@ MOMO_SECRET_KEY = 'K951B6PE1waDMi640xX08PD3vg6EkVlz'
 MOMO_ENDPOINT = 'https://test-payment.momo.vn/v2/gateway/api/create'
 MOMO_REDIRECT_URL = 'http://localhost:3000/customer/payment/result'
 MOMO_IPN_URL = 'http://localhost:8000/api/orders/momo-callback/'
+
+# AI Configuration
+GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
+OPENAI_API_KEY = config('OPENAI_API_KEY', default='')

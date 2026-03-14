@@ -15,6 +15,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { classNames } from 'primereact/utils';
 import { productAPI, categoryAPI, cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
+import { 
+  addItemToLocalCart, 
+  getLocalCartTotalQuantity, 
+  removeItemFromLocalCart 
+} from '@/services/localCart';
 
 interface Category {
     id: number;
@@ -188,22 +193,6 @@ const ProductsPage = () => {
     };
 
     const addToCart = async (product: Product) => {
-        // Kiểm tra đăng nhập
-        const user = getStoredUser();
-        if (!user) {
-            toast.current?.show({
-                severity: 'warn',
-                summary: 'Yêu cầu đăng nhập',
-                detail: 'Vui lòng đăng nhập để thêm sản phẩm vào giỏ hàng',
-                life: 3000
-            });
-            // Chuyển đến trang đăng nhập
-            setTimeout(() => {
-                router.push('/auth/login');
-            }, 1000);
-            return;
-        }
-
         const selectedSize = selectedSizes[product.id];
         
         // Nếu có variants, bắt buộc phải chọn size
@@ -221,29 +210,70 @@ const ProductsPage = () => {
             ? `${selectedSize}` 
             : `${selectedSize ?? 30}cm`;
         
+        // Lấy giá dựa trên size
+        let itemPrice = product.price;
+        if (selectedSize && product.variants && product.variants.length > 0) {
+            const selectedVariant = product.variants.find(v => v.size === `${selectedSize}`);
+            if (selectedVariant) {
+                itemPrice = selectedVariant.price;
+            }
+        }
+
         try {
-            const response = await cartAPI.addItem(product.id, 1, sizeStr);
-            if (response && response.id) {
+            const user = getStoredUser();
+            
+            if (user) {
+                // User đã đăng nhập - gọi API backend
+                const response = await cartAPI.addItem(product.id, 1, sizeStr);
+                if (response && response.id) {
+                    // Update local cart state
+                    setCart((prev) => ({
+                        ...prev,
+                        [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size: selectedSize ?? 30 }
+                    }));
+                    // Update topbar cart count via context
+                    if (response.total_quantity) {
+                        setCartCount(response.total_quantity);
+                    }
+                    toast.current?.show({
+                        severity: 'success',
+                        summary: 'Đã thêm vào giỏ',
+                        detail: `${product.name} (Size ${sizeStr}) đã được thêm vào giỏ hàng`,
+                        life: 3000
+                    });
+                } else if (response && response.error) {
+                    toast.current?.show({
+                        severity: 'error',
+                        summary: 'Lỗi',
+                        detail: response.error || 'Không thể thêm sản phẩm vào giỏ hàng',
+                        life: 3000
+                    });
+                }
+            } else {
+                // User chưa đăng nhập - lưu vào localStorage
+                addItemToLocalCart(
+                    product.id,
+                    product.name,
+                    itemPrice,
+                    1,
+                    sizeStr,
+                    product.main_image_url || product.main_image || ''
+                );
+                
+                // Update cart count từ localStorage
+                const newTotal = getLocalCartTotalQuantity();
+                setCartCount(newTotal);
+                
                 // Update local cart state
                 setCart((prev) => ({
                     ...prev,
                     [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size: selectedSize ?? 30 }
                 }));
-                // Update topbar cart count via context
-                if (response.total_quantity) {
-                    setCartCount(response.total_quantity);
-                }
+                
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Đã thêm vào giỏ',
-                    detail: `${product.name} (Size ${sizeStr}) đã được thêm vào giỏ hàng`,
-                    life: 3000
-                });
-            } else if (response && response.error) {
-                toast.current?.show({
-                    severity: 'error',
-                    summary: 'Lỗi',
-                    detail: response.error || 'Không thể thêm sản phẩm vào giỏ hàng',
+                    detail: `${product.name} (Size ${sizeStr}) đã được thêm vào giỏ hàng (không cần đăng nhập)`,
                     life: 3000
                 });
             }
@@ -259,21 +289,6 @@ const ProductsPage = () => {
     };
 
     const buyNow = (product: Product) => {
-        // Kiểm tra đăng nhập
-        const user = getStoredUser();
-        if (!user) {
-            toast.current?.show({
-                severity: 'warn',
-                summary: 'Cảnh báo',
-                detail: 'Vui lòng đăng nhập để mua hàng',
-                life: 3000
-            });
-            setTimeout(() => {
-                router.push('/auth/login');
-            }, 1000);
-            return;
-        }
-
         const selectedSize = selectedSizes[product.id];
         
         // Nếu có variants, bắt buộc phải chọn size
@@ -297,10 +312,9 @@ const ProductsPage = () => {
             const variant = product.variants.find(v => v.size === selectedSizeStr);
             
             if (variant) {
-                size = variant.size; // Giữ nguyên format size từ variant (vd: "30", "60", "90")
+                size = variant.size;
                 price = variant.price;
             } else {
-                // Fallback nếu không tìm thấy variant
                 size = selectedSizeStr;
             }
         } else {
@@ -314,12 +328,12 @@ const ProductsPage = () => {
             name: product.name,
             price: price,
             quantity: 1,
-            unit: size, // Sử dụng size làm unit
-            size: size, // Giữ lại size field để tương thích
+            unit: size,
+            size: size,
             image: product.main_image_url || product.main_image
         };
         
-        console.log('Buy Now - Item:', item); // Debug log
+        console.log('Buy Now - Item:', item);
         sessionStorage.setItem('buyNowItem', JSON.stringify(item));
         window.location.href = '/customer/checkout';
     };
