@@ -18,12 +18,30 @@ logger = logging.getLogger(__name__)
 
 class CartViewSet(viewsets.ViewSet):
     """ViewSet cho giỏ hàng"""
-    permission_classes = [IsAuthenticated]
+    authentication_classes = []  # Disable JWT authentication to allow anonymous users
+    
+    def get_permissions(self):
+        """Cho phép anonymous users xem giỏ hàng, nhưng chỉ authenticated users mới được thay đổi"""
+        if self.action in ['my_cart', 'retrieve']:
+            permission_classes = [AllowAny]
+        else:
+            permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
     
     @action(detail=False, methods=['get'])
     def my_cart(self, request):
         """Lấy giỏ hàng của user hiện tại"""
         try:
+            # Nếu user là anonymous, trả về cart trống
+            if not request.user.is_authenticated:
+                return Response({
+                    'id': None,
+                    'user': None,
+                    'items': [],
+                    'total_price': 0,
+                    'total_quantity': 0
+                }, status=status.HTTP_200_OK)
+            
             cart, created = Cart.objects.get_or_create(user=request.user)
             serializer = CartSerializer(cart, context={'request': request})
             return Response(serializer.data)

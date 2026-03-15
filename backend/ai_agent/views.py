@@ -18,6 +18,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
     """API endpoints cho AI Agent conversations"""
     serializer_class = ConversationSessionSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []  # Disable JWT authentication for this viewset
     lookup_field = 'session_id'
 
     def get_serializer_class(self):
@@ -108,6 +109,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 'user_message': message,
                 'ai_response': ai_response['response'],
                 'recommendations': ai_response.get('recommendations', []),
+                'cart': ai_response.get('cart', []),
                 'should_create_order': ai_response.get('should_create_order', False)
             }, status=status.HTTP_200_OK)
 

@@ -20,6 +20,8 @@ import {
   getLocalCartTotalQuantity, 
   removeItemFromLocalCart 
 } from '@/services/localCart';
+import { ProductQuestionInput } from '@/components/ProductQuestionInput';
+import { ProductDisplayLayout } from '@/components/ProductDisplayLayout';
 
 interface Category {
     id: number;
@@ -78,6 +80,11 @@ const ProductsPage = () => {
     const [rowsPerPage] = useState(12);
     const toast = useRef<Toast>(null);
 
+    // AI Analysis State
+    const [aiAnalysisResult, setAiAnalysisResult] = useState<any>(null);
+    const [showAiResults, setShowAiResults] = useState(false);
+    const [aiLoading, setAiLoading] = useState(false);
+
     const sortOptions = [
         { label: 'Mới nhất', value: 'newest' },
         { label: 'Giá: Thấp đến cao', value: 'price-asc' },
@@ -85,6 +92,13 @@ const ProductsPage = () => {
         { label: 'Bán chạy nhất', value: 'sold' },
         { label: 'Tên: A-Z', value: 'name' }
     ];
+
+    // Handle AI Analysis Complete
+    const handleAiAnalysisComplete = (result: any) => {
+        setAiAnalysisResult(result);
+        setShowAiResults(true);
+        setAiLoading(false);
+    };
 
     // Load tất cả dữ liệu một lần khi component mount
     useEffect(() => {
@@ -635,6 +649,12 @@ const ProductsPage = () => {
             {/* Products Grid */}
             <div className="col-12">
                 <div className="card">
+                    {/* AI Question Input */}
+                    <ProductQuestionInput 
+                        onAnalysisComplete={handleAiAnalysisComplete}
+                        className="mb-4"
+                    />
+
                     {!categoryVisible && (
                         <div className="mb-3 flex justify-content-between align-items-center">
                             <div></div>
@@ -642,7 +662,29 @@ const ProductsPage = () => {
                         </div>
                     )}
 
-                    {header()}
+                    {/* Show AI Analysis Results */}
+                    {showAiResults && aiAnalysisResult && (
+                        <div className="mb-4">
+                            <ProductDisplayLayout
+                                displayType={aiAnalysisResult.display_type || 'list'}
+                                products={aiAnalysisResult.products || []}
+                                analysis={aiAnalysisResult.analysis}
+                                filters={aiAnalysisResult.filters}
+                                loading={aiLoading}
+                            />
+                            <Button 
+                                label="Quay lại danh sách sản phẩm"
+                                icon="pi pi-arrow-left"
+                                className="p-button-text mt-3"
+                                onClick={() => setShowAiResults(false)}
+                            />
+                        </div>
+                    )}
+
+                    {/* Regular Products Display */}
+                    {!showAiResults && (
+                        <>
+                            {header()}
 
                     {loading ? (
                         <div className="grid">
@@ -675,6 +717,8 @@ const ProductsPage = () => {
                                     <p className="text-500">{searchTerm ? `Không tìm thấy sản phẩm với từ khóa "${searchTerm}"` : 'Vui lòng thử tìm kiếm với từ khóa khác hoặc chọn danh mục khác'}</p>
                                 </div>
                             )}
+                        </>
+                    )}
                         </>
                     )}
                 </div>

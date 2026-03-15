@@ -11,8 +11,11 @@ from .serializers import (
     ProductListSerializer,
     ProductCreateUpdateSerializer,
     ProductImageSerializer,
-    ProductVariantSerializer
+    ProductVariantSerializer,
+    ProductQuestionAnalysisSerializer,
+    ProductAnalysisResponseSerializer
 )
+from ai_agent.services import AIAgentService
 
 class ProductViewSet(viewsets.ModelViewSet):
     """
@@ -43,7 +46,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         Cho phép mọi người xem danh sách và chi tiết sản phẩm
         Chỉ admin mới được tạo, sửa, xóa
         """
-        if self.action in ['list', 'retrieve', 'featured', 'by_category']:
+        if self.action in ['list', 'retrieve', 'featured', 'by_category', 'low_stock', 'out_of_stock', 'analyze_product_question']:
             permission_classes = [AllowAny]
         else:
             permission_classes = [IsAuthenticated]
@@ -366,4 +369,69 @@ class ProductViewSet(viewsets.ModelViewSet):
             return Response(
                 {'error': f'Lỗi khi lưu biến thể: {str(e)}'},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=False, methods=['post'])
+    def analyze_product_question(self, request):
+        """
+        Phân tích câu hỏi của user về sản phẩm gấu bông dùng AI
+        Trả về danh sách sản phẩm phù hợp + loại hiển thị + phân tích
+        
+        Request body: {
+            "question": "Tôi muốn xem chi tiết gấu bông màu hồng"
+        }
+        
+        Response: {
+            "display_type": "detail|list|comparison|recommendation",
+            "product_ids": [1, 2, 3],
+            "products": [...ProductListSerializer data...],
+            "filters": {...},
+            "analysis": "..."
+        }
+        """
+        # Validate input
+        serializer = ProductQuestionAnalysisSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {'errors': serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        question = serializer.validated_data.get('question', '').strip()
+        if not question:
+            return Response(
+                {'error': 'Câu hỏi không thể trống'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Use AI Agent Service to analyze
+            ai_service = AIAgentService()
+            analysis_result = ai_service.analyze_product_question(question)
+            
+            # Get product objects from IDs
+            product_ids = analysis_result.get('product_ids', [])
+            products = Product.objects.filter(id__in=product_ids, status='active')
+            
+            # Serialize products
+            products_serializer = ProductListSerializer(
+                products,
+                many=True,
+                context={'request': request}
+            )
+            
+            return Response({
+                'display_type': analysis_result.get('display_type', 'list'),
+                'product_ids': product_ids,
+                'products': products_serializer.data,
+                'filters': analysis_result.get('filters', {}),
+                'analysis': analysis_result.get('analysis', ''),
+                'message': 'Phân tích câu hỏi và tìm sản phẩm thành công'
+            }, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            print(f"Error analyzing product question: {str(e)}")
+            return Response(
+                {'error': f'Lỗi khi phân tích câu hỏi: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

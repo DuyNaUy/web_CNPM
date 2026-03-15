@@ -1,13 +1,4 @@
-'use client';
-import { LayoutProvider } from '../layout/context/layoutcontext';
-import { PrimeReactProvider } from 'primereact/api';
-import FloatingChatButton from '@/components/FloatingChatButton';
-import 'primereact/resources/primereact.css';
-import 'primeflex/primeflex.css';
-import 'primeicons/primeicons.css';
-import '../styles/layout/layout.scss';
-import '../styles/admin/admin.scss';
-import '../styles/demo/Demos.scss';
+import ClientWrapper from './client-wrapper';
 
 interface RootLayoutProps {
     children: React.ReactNode;
@@ -20,12 +11,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                 <link id="theme-css" href={`/themes/lara-light-indigo/theme.css`} rel="stylesheet"></link>
             </head>
             <body>
-                <PrimeReactProvider>
-                    <LayoutProvider>
-                        {children}
-                        <FloatingChatButton />
-                    </LayoutProvider>
-                </PrimeReactProvider>
+                <ClientWrapper>{children}</ClientWrapper>
             </body>
         </html>
     );

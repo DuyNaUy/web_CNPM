@@ -1,13 +1,23 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import AddressFormChat from './AddressFormChat';
+import ProductRecommendationsGrid from './ProductRecommendationsGrid';
+import { cartAPI } from '@/services/api';
 import styles from './AIAgentChat.module.css';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: string;
+}
+
+interface Suggestion {
+  id: string;
+  text: string;
+  emoji: string;
+  action: string;
 }
 
 interface Recommendation {
@@ -19,6 +29,57 @@ interface Recommendation {
   price?: number;
   image_url?: string;
 }
+
+const INITIAL_SUGGESTIONS: Suggestion[] = [
+  {
+    id: 'browse-products',
+    text: 'Thư mục sản phẩm',
+    emoji: '',
+    action: 'Tôi muốn xem thư mục sản phẩm'
+  },
+  {
+    id: 'large-teddy',
+    text: 'Gấu size lớn',
+    emoji: '',
+    action: 'Tôi muốn xem gấu size lớn'
+  },
+  {
+    id: 'light-color-teddy',
+    text: 'Gấu sáng màu',
+    emoji: '',
+    action: 'Tôi muốn xem gấu sáng màu'
+  },
+  {
+    id: 'purchase',
+    text: 'Mua hàng',
+    emoji: '',
+    action: 'Tôi muốn mua sắm'
+  },
+  {
+    id: 'view-cart',
+    text: 'Xem giỏ hàng',
+    emoji: '',
+    action: 'Xem giỏ hàng hiện tại của tôi'
+  },
+  {
+    id: 'purchase-history',
+    text: 'Lịch sử mua hàng',
+    emoji: '',
+    action: 'Tôi muốn xem lịch sử mua hàng của tôi'
+  },
+  {
+    id: 'faq',
+    text: 'Câu hỏi thường gặp',
+    emoji: '',
+    action: 'Tôi muốn xem các câu hỏi thường gặp'
+  },
+  {
+    id: 'order-status',
+    text: 'Xem trạng thái đơn hàng',
+    emoji: '',
+    action: 'Làm sao để xem trạng thái đơn hàng của tôi?'
+  }
+];
 
 interface AIAgentChatProps {
   conversationId: string;
@@ -38,6 +99,7 @@ export default function AIAgentChat({
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [estimatedTotal, setEstimatedTotal] = useState(0);
   const [cart, setCart] = useState<any[]>([]);
+  const router = useRouter();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const previousMessageCountRef = useRef<number>(0);
   const shouldScrollRef = useRef<boolean>(false);
@@ -62,14 +124,8 @@ export default function AIAgentChat({
     loadConversationHistory();
   }, [conversationId]);
 
-  // Auto-load new messages every 2 seconds for real-time updates
-  useEffect(() => {
-    const pollInterval = setInterval(() => {
-      loadConversationHistory();
-    }, 2000); // Poll every 2 seconds
-
-    return () => clearInterval(pollInterval);
-  }, [conversationId]);
+  // Note: Removed polling - sendMessage already fetches latest data
+  // Polling every 2s was clearing recommendations
 
   const loadConversationHistory = async () => {
     try {
@@ -90,7 +146,7 @@ export default function AIAgentChat({
         const data = await response.json();
         setMessages(data.messages || []);
         // normalize any recommendations from history to our expected shape
-        if (data.recommendations) {
+        if (data.recommendations && data.recommendations.length > 0) {
           const recs = data.recommendations.map((rec: any) => {
             const productObj = rec.product || {};
             const imageUrl = rec.image_url || productObj.main_image_url || '';
@@ -112,9 +168,8 @@ export default function AIAgentChat({
             };
           });
           setRecommendations(recs);
-        } else {
-          setRecommendations([]);
         }
+        // Don't clear recommendations if no data returned - keep showing current ones
       }
     } catch (error) {
       console.error('Failed to load conversation history:', error);
@@ -184,17 +239,7 @@ export default function AIAgentChat({
             };
           });
 
-          // append formatted recommendation block to assistantContent
-          assistantContent += "\n\n📦 **Sản phẩm được đề xuất:**\n";
-          recs.forEach((rec, idx) => {
-            assistantContent += `\n${idx + 1}. **${rec.product_name}**\n`;
-            assistantContent += `   💰 Giá: ${(rec.price || 0).toLocaleString()} ₫\n`;
-            if (rec.image_url) {
-              assistantContent += `   ![image](${rec.image_url})\n`;
-            }
-            assistantContent += `   ${rec.reason}\n`;
-          });
-
+          // Don't append recommendation text to message, we'll render it as a grid
           setRecommendations(recs);
           const total = recs.reduce((s, r) => s + ((r.price || 0) * r.quantity), 0);
           setEstimatedTotal(total);
@@ -245,6 +290,146 @@ export default function AIAgentChat({
     }
   };
 
+  const handleSuggestionClick = (suggestion: Suggestion) => {
+    setInputValue(suggestion.action);
+    setTimeout(() => {
+      const userMessage: Message = {
+        role: 'user',
+        content: suggestion.action,
+        timestamp: new Date().toISOString(),
+      };
+      shouldScrollRef.current = true;
+      setMessages((prev) => [...prev, userMessage]);
+      setIsLoading(true);
+
+      // Send to API
+      (async () => {
+        try {
+          const token = localStorage.getItem('access_token');
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+          const headers: any = {
+            'Content-Type': 'application/json',
+          };
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+          const response = await fetch(
+            `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                message: suggestion.action,
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            let assistantContent: string = data.ai_response;
+
+            let recs: Recommendation[] = [];
+            if (data.recommendations && data.recommendations.length > 0) {
+              recs = data.recommendations.map((rec: any) => {
+                const productObj = rec.product || {};
+                const imageUrl = rec.image_url || productObj.main_image_url || '';
+                const priceVal = rec.price || productObj.price || 0;
+                const nameVal = rec.product_name || productObj.name || rec.product__name || 'Sản phẩm';
+                let finalImage = imageUrl;
+                if (finalImage && !finalImage.startsWith('http')) {
+                  const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                  finalImage = base.replace(/\/$/, '') + finalImage;
+                }
+                return {
+                  product_id: rec.product_id || rec.id || productObj.id,
+                  product_name: nameVal,
+                  reason: rec.reason || '',
+                  confidence_score: rec.confidence_score || rec.confidence || 0.8,
+                  quantity: rec.quantity || 1,
+                  price: priceVal,
+                  image_url: finalImage,
+                };
+              });
+
+              // Don't append recommendation text to message, we'll render it as a grid
+              setRecommendations(recs);
+              const total = recs.reduce((s, r) => s + ((r.price || 0) * r.quantity), 0);
+              setEstimatedTotal(total);
+              onRecommendationsReceived?.(recs);
+            }
+
+            if (data.cart) {
+              setCart(data.cart);
+              const cartSubtotal = data.cart.reduce((s: number, i: any) => s + (i.price * (i.quantity || 1)), 0);
+              setEstimatedTotal(cartSubtotal > 0 ? cartSubtotal + 30000 : 0);
+            }
+
+            if (data.should_create_order) {
+              setTimeout(() => {
+                setShowAddressForm(true);
+                onOrderCreationStart?.(recs, data.cart ? data.cart.reduce((s: number, i: any) => s + (i.price || 0), 0) : estimatedTotal);
+              }, 500);
+            }
+
+            const assistantMessage: Message = {
+              role: 'assistant',
+              content: assistantContent,
+              timestamp: new Date().toISOString(),
+            };
+
+            shouldScrollRef.current = true;
+            setMessages((prev) => [...prev, assistantMessage]);
+          }
+        } catch (error) {
+          console.error('Failed to send suggestion:', error);
+          const errorMessage: Message = {
+            role: 'assistant',
+            content: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại.',
+          };
+          shouldScrollRef.current = true;
+          setMessages((prev) => [...prev, errorMessage]);
+        } finally {
+          setIsLoading(false);
+          setInputValue('');
+        }
+      })();
+    }, 100);
+  };
+
+  const handleAddToCart = (product: Recommendation) => {
+    // Add to cart logic with API integration
+    console.log('Adding to cart:', product);
+    
+    (async () => {
+      try {
+        const response = await cartAPI.addItem(product.product_id, product.quantity || 1, 'cái');
+        
+        if (response.success || response.message) {
+          // Show success notification
+          const alertMsg = `✅ Đã thêm "${product.product_name}" (x${product.quantity || 1}) vào giỏ hàng!`;
+          alert(alertMsg);
+          console.log('Added to cart:', response);
+        } else {
+          alert('❌ Không thể thêm vào giỏ hàng. Vui lòng thử lại.');
+        }
+      } catch (error: any) {
+        console.error('Error adding to cart:', error);
+        alert('❌ Lỗi: ' + (error.message || 'Không thể thêm vào giỏ hàng'));
+      }
+    })();
+  };
+
+  const handleBuyNow = (product: Recommendation) => {
+    // Buy now logic - can navigate to product page or checkout
+    console.log('Buy now:', product);
+    router.push(`/customer/products/${product.product_id}`);
+  };
+
+  const handleViewMore = (productId: number) => {
+    // View more logic
+    router.push(`/customer/products/${productId}`);
+  };
+
   // helper to convert simple markdown images & line breaks to HTML
   const renderContentHtml = (text: string) => {
     // escape any < or > to avoid injection (minimal)
@@ -286,17 +471,30 @@ export default function AIAgentChat({
             <p>Hãy cho tôi biết bạn đang tìm kiếm gì, tôi sẽ giúp bạn tìm sản phẩm phù hợp nhất.</p>
           </div>
         ) : (
-          messages.map((msg, idx) => (
-            <div key={idx} className={`${styles.message} ${styles[msg.role]}`}>
-              <div className={styles.avatar}>
-                {msg.role === 'user' ? '👤' : '🧸'}
+          messages.map((msg, idx) => {
+            // Skip rendering AI assistant message if we have recommendations to display
+            // (recommendations will be shown as ProductCards instead)
+            const isLastAssistantMessageWithRecs = 
+              msg.role === 'assistant' && 
+              idx === messages.length - 1 && 
+              recommendations.length > 0;
+            
+            if (isLastAssistantMessageWithRecs) {
+              return null;
+            }
+            
+            return (
+              <div key={idx} className={`${styles.message} ${styles[msg.role]}`}>
+                <div className={styles.avatar}>
+                  {msg.role === 'user' ? '👤' : '🧸'}
+                </div>
+                <div
+                  className={styles.content}
+                  dangerouslySetInnerHTML={renderContentHtml(msg.content)}
+                />
               </div>
-              <div
-                className={styles.content}
-                dangerouslySetInnerHTML={renderContentHtml(msg.content)}
-              />
-            </div>
-          ))
+            );
+          })
         )}
         {isLoading && (
           <div className={styles.loadingContainer}>
@@ -307,6 +505,19 @@ export default function AIAgentChat({
               <div className={styles.dot}></div>
             </div>
           </div>
+        )}
+
+        {/* Product Recommendations Grid */}
+        {recommendations.length > 0 && (
+          <ProductRecommendationsGrid
+            recommendations={recommendations}
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+            onViewMore={handleViewMore}
+            hideText={true}
+            showTitle={false}
+            compact={true}
+          />
         )}
 
         {/* Show cart summary if items added */}
@@ -360,6 +571,23 @@ export default function AIAgentChat({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Horizontal Suggestions Bar */}
+      {messages.length === 0 && !showAddressForm && (
+        <div className={styles.suggestionsBar}>
+          <div className={styles.suggestionsScrollContainer}>
+            {INITIAL_SUGGESTIONS.map((suggestion) => (
+              <button
+                key={suggestion.id}
+                className={styles.suggestionPill}
+                onClick={() => handleSuggestionClick(suggestion)}
+                title={suggestion.action}
+              >
+                <span className={styles.suggestionPillText}>{suggestion.text}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {!showAddressForm && (
         <div className={styles.inputArea}>

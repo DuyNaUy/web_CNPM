@@ -222,3 +222,33 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
             })
         
         return data
+
+
+class ProductQuestionAnalysisSerializer(serializers.Serializer):
+    """Serializer cho câu hỏi phân tích sản phẩm"""
+    question = serializers.CharField(
+        max_length=1000,
+        help_text="Câu hỏi của người dùng về sản phẩm gấu bông"
+    )
+
+
+class ProductAnalysisResponseSerializer(serializers.Serializer):
+    """
+    Serializer cho response của analysis endpoint
+    Trả về: danh sách sản phẩm + loại hiển thị + phân tích
+    """
+    display_type = serializers.CharField(
+        help_text="Loại hiển thị: 'detail', 'list', 'comparison', 'recommendation'"
+    )
+    products = ProductListSerializer(many=True, read_only=True)
+    product_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        help_text="Danh sách ID sản phẩm"
+    )
+    filters = serializers.JSONField(
+        help_text="Các điều kiện lọc được áp dụng"
+    )
+    analysis = serializers.CharField(
+        help_text="Phân tích của AI về câu hỏi"
+    )
+
