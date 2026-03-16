@@ -1,137 +1,195 @@
+/* ProductRecommendationsGrid - Modern Layout */
+
 .container {
   width: 100%;
-  margin: 16px 0;
-  padding: 12px 0;
-  background: #fafafa;
-  border-radius: 8px;
+  margin: 20px 0;
+  padding: 0;
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
 }
 
 .title {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
   color: #333;
-  padding: 12px 16px;
+  padding: 16px 18px;
   margin: 0;
+  background: linear-gradient(135deg, rgba(230, 58, 108, 0.05) 0%, rgba(255, 165, 0, 0.05) 100%);
   border-bottom: 2px solid #E63A6C;
-  background: white;
-  border-radius: 8px 8px 0 0;
+  border-radius: 12px 12px 0 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  letter-spacing: -0.2px;
 }
 
+/* Main Product Grid */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
-  padding: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  padding: 16px;
   max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
+  width: 100%;
 }
 
-.grid > * {
-  scroll-snap-align: start;
-  min-width: 160px;
-}
-
-/* Scrollbar Styling */
-.grid::-webkit-scrollbar {
-  height: 6px;
-}
-
-.grid::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
-}
-
-.grid::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
-}
-
-.grid::-webkit-scrollbar-thumb:hover {
-  background: #999;
-}
-
-/* Mobile */
-@media (min-width: 480px) {
+/* Smooth Grid Responsive */
+@media (max-width: 480px) {
   .grid {
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 12px;
     padding: 12px;
+  }
+}
+
+@media (min-width: 480px) and (max-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 13px;
+    padding: 14px;
   }
 
   .title {
     font-size: 15px;
+    padding: 14px 16px;
   }
 }
 
-/* Tablet */
-@media (min-width: 768px) {
+@media (min-width: 768px) and (max-width: 1024px) {
   .grid {
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
     padding: 16px;
   }
 
   .title {
     font-size: 16px;
-    padding: 16px;
+    padding: 16px 18px;
   }
 }
 
-/* Desktop */
 @media (min-width: 1024px) {
   .grid {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 15px;
+    padding: 18px;
+  }
+
+  .title {
+    font-size: 17px;
+    padding: 18px 20px;
   }
 }
 
-/* COMPACT HORIZONTAL MODE - For Chat Display */
+@media (min-width: 1440px) {
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 20px;
+  }
+}
+
+/* ===== COMPACT HORIZONTAL MODE - For Chat Display ===== */
 .compactContainer {
-  margin: 12px 0;
+  margin: 14px 0;
   padding: 0;
   background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .compactContainer .title {
   font-size: 13px;
-  padding: 8px 12px;
+  font-weight: 700;
+  padding: 10px 14px;
   margin: 0;
   border-bottom: none;
-  background: transparent;
+  background: linear-gradient(135deg, rgba(230, 58, 108, 0.08) 0%, rgba(255, 165, 0, 0.05) 100%);
+  border-left: 4px solid #E63A6C;
   border-radius: 0;
-  border-left: 3px solid #E63A6C;
+  letter-spacing: -0.2px;
 }
 
+/* Compact Grid - Vertical Stack */
 .compactGrid {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   max-width: 100%;
   overflow-x: visible;
   overflow-y: auto;
+  max-height: 600px;
 }
 
-/* Smooth scrollbar for compact grid */
+/* Scrollbar Styling for Compact Grid */
 .compactGrid::-webkit-scrollbar {
-  height: 4px;
+  width: 6px;
 }
 
 .compactGrid::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 2px;
+  background: #f0f0f0;
+  border-radius: 3px;
 }
 
 .compactGrid::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 2px;
+  background: linear-gradient(180deg, #ccc 0%, #999 100%);
+  border-radius: 3px;
+  transition: background 0.3s ease;
 }
 
 .compactGrid::-webkit-scrollbar-thumb:hover {
-  background: #999;
+  background: linear-gradient(180deg, #999 0%, #666 100%);
 }
+
+/* Animation for grid items */
+@keyframes gridItemAppear {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.grid > * {
+  animation: gridItemAppear 0.3s ease-out;
+  animation-fill-mode: both;
+}
+
+.grid > :nth-child(1) {
+  animation-delay: 0.05s;
+}
+
+.grid > :nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.grid > :nth-child(3) {
+  animation-delay: 0.15s;
+}
+
+.grid > :nth-child(n+4) {
+  animation-delay: 0.2s;
+}
+
+/* Empty State */
+.emptyState {
+  grid-column: 1 / -1;
+  padding: 40px 20px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+}
+
+.emptyStateIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+

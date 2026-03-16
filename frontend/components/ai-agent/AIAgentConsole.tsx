@@ -42,7 +42,12 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
   useEffect(() => {
     const savedSessionId = localStorage.getItem('teddy_ai_session_id');
     if (savedSessionId) {
+      console.log('[AIAgentConsole] Loaded conversation from localStorage:', savedSessionId);
       setConversationId(savedSessionId);
+    } else {
+      // Auto-start conversation if not exists
+      console.log('[AIAgentConsole] No conversation found, auto-starting...');
+      handleStartConversation();
     }
   }, []);
 

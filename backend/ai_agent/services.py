@@ -1,15 +1,15 @@
 import os
 import json
 import uuid
+import logging
 from typing import List, Dict, Optional
 import requests
-import re
 from django.conf import settings
 from django.db.models import Q
+from .models import ConversationSession
 from products.models import Product
-from .models import ConversationSession, AIRecommendation, AutomatedOrder
 
-# Try to import google.genai (new package), but make it optional
+# Try to import google.genai (new package)
 try:
     import google.genai as genai
     GENAI_AVAILABLE = True
@@ -17,37 +17,106 @@ except ImportError:
     genai = None
     GENAI_AVAILABLE = False
 
+logger = logging.getLogger(__name__)
+
 
 class AIAgentService:
-    """Service để tương tác với AI Agent (tư vấn bán hàng)"""
+    """Service để tương tác với AI Agent - SIMPLIFIED VERSION
+    
+    Chỉ giữ lại:
+    - Conversation management (start, add messages)
+    - Basic API call to Gemini/OpenAI
+    - Return responses (không có recommendation/order logic)
+    """
     
     def __init__(self):
-        self.api_key = getattr(settings, 'OPENAI_API_KEY', '') or os.getenv('OPENAI_API_KEY', '')
+        # API Keys setup
+        self.openai_api_key = getattr(settings, 'OPENAI_API_KEY', '') or os.getenv('OPENAI_API_KEY', '')
         self.gemini_api_key = getattr(settings, 'GEMINI_API_KEY', '') or os.getenv('GEMINI_API_KEY', '')
-        if self.gemini_api_key and GENAI_AVAILABLE:
-            # New package: api_key will be passed directly to client
-            pass
-            
-        self.model = 'gpt-3.5-turbo'  # hoặc 'gpt-4'
-        self.system_prompt = """Bạn là một tư vấn viên bán hàng chuyên nghiệp cho cửa hàng TeddyShop bán các sản phẩm gấu bông và đồ chơi.
         
-Nhiệm vụ của bạn:
-1. Tư vấn khách hàng về sản phẩm phù hợp với nhu cầu của họ dựa trên danh sách sản phẩm cung cấp
-2. Giới thiệu giá và đặc điểm nổi bật
-3. Khi khách hàng đồng ý mua nhiều sản phẩm cùng lúc, hãy tạo một block JSON. MỌI THÔNG TIN VỀ ĐƠN HÀNG PHẢI ĐƯỢC CHỨA TRONG BLOCK JSON NÀY.
-4. Block JSON có định dạng chính xác sau (bao bọc bởi ```json và ```):
-```json
-{
-  "action": "checkout",
-  "items": [
-      {"product_id": 1, "quantity": 1, "size": ""}
-  ]
-}
-```
-Tuyệt đối chỉ dùng block này khi khách quyết định chốt mua.
-5. Giữ thái độ thân thiện, phản hồi bằng tiếng Việt. Không in nội dung JSON ra cho khách đọc, chỉ để hệ thống bắt tín hiệu."""
+        # Model configs
+        self.openai_model = 'gpt-3.5-turbo'
+        
+        # Build enhanced system prompt with product catalog
+        self.system_prompt = self._build_system_prompt()
+    
+    def _build_system_prompt(self) -> str:
+        """
+        Xây dựng system prompt với thông tin sản phẩm từ database
+        Giúp AI hiểu được catalog sản phẩm đầy đủ
+        """
+        # Lấy danh sách sản phẩm với mô tả
+        products_info = self._get_product_catalog_summary()
+        
+        base_prompt = """Bạn là trợ lý AI cho cửa hàng TeddyShop bán các sản phẩm gấu bông cao cấp.
+        
+NHIỆM VỤ CỦA BẠN:
+1. Giúp khách hàng tìm kiếm và chọn sản phẩm phù hợp
+2. Cung cấp thông tin chi tiết về sản phẩm: giá, chất lượng, tính năng
+3. Đưa ra gợi ý sản phẩm dựa trên nhu cầu của khách
+4. Hỗ trợ quá trình mua hàng
 
-    def start_conversation(self, user) -> ConversationSession:
+QUYỀN HẠN:
+- Bạn có quyền truy cập đầy đủ tất cả dữ liệu sản phẩm trong cửa hàng
+- Có thể tìm kiếm sản phẩm theo: tên, danh mục, giá, đặc điểm
+- Có thể nhắc đến tên sản phẩm để gợi ý cho khách
+
+DANH SÁCH SẢN PHẨM HIỆN CÓ:
+"""
+        
+        # Thêm thông tin sản phẩm vào prompt
+        if products_info:
+            base_prompt += products_info
+        else:
+            base_prompt += "Không có sản phẩm nào trong kho.\n"
+        
+        base_prompt += """
+HƯỚNG DẪN PHẢN HỒI:
+- Phản hồi bằng tiếng Việt, thân thiện, chuyên nghiệp
+- Khi khách hỏi về sản phẩm, hãy gợi ý các sản phẩm liên quan
+- Nêu rõ tên sản phẩm, giá, và ưu điểm khi gợi ý
+- Sẵn sàng trả lời câu hỏi về shipping, đổi trả, bảo hành
+
+QUAN TRỌNG: Mỗi khi bạn đề cập đến tên sản phẩm, hãy sử dụng tên chính xác từ danh sách trên."""
+        
+        return base_prompt
+    
+    def _get_product_catalog_summary(self) -> str:
+        """
+        Lấy thông tin tóm tắt về tất cả sản phẩm
+        Để AI Agent có hiểu biết đầy đủ về catalog
+        
+        Returns:
+            String chứa danh sách sản phẩm được format
+        """
+        try:
+            products = Product.objects.filter(status='active').select_related('category')
+            
+            if not products.exists():
+                return ""
+            
+            catalog_text = ""
+            for idx, product in enumerate(products[:50], 1):  # Giới hạn 50 sản phẩm
+                category_name = product.category.name if product.category else "Khác"
+                stock_status = "Còn hàng" if product.stock > 0 else "Hết hàng"
+                
+                # Format: Tên sản phẩm | Giá | Danh mục | Tình trạng | Mô tả ngắn
+                summary = f"""
+{idx}. {product.name}
+   - Giá: {int(product.price):,}đ
+   - Danh mục: {category_name}
+   - Tình trạng: {stock_status} (Tồn kho: {product.stock})
+   - Đánh giá: {product.rating}/5 ({product.reviews_count} đánh giá)
+   - Mô tả: {product.description[:100] if product.description else 'Chưa có mô tả'}"""
+                
+                catalog_text += summary
+            
+            return catalog_text
+        except Exception as e:
+            logger.warning(f"Error building product catalog: {str(e)}")
+            return ""
+
+    def start_conversation(self, user=None) -> ConversationSession:
         """Bắt đầu một phiên hội thoại mới"""
         session_id = f"session_{uuid.uuid4().hex[:12]}"
         conversation = ConversationSession.objects.create(
@@ -56,84 +125,67 @@ Tuyệt đối chỉ dùng block này khi khách quyết định chốt mua.
         )
         return conversation
 
-    def get_products_context(self) -> str:
-        """Lấy thông tin sản phẩm để cung cấp cho AI"""
-        products = Product.objects.filter(status='active')[:20]  # Lấy 20 sản phẩm
-        context = "Danh sách sản phẩm hiện có:\n"
-        for product in products:
-            context += f"\n- {product.name}: {product.price:,} VND (Đánh giá: {product.rating}/5, Đã bán: {product.sold_count})"
-            if product.description:
-                context += f"\n  {product.description}"
-        return context
-
     def chat(self, conversation: ConversationSession, user_message: str) -> Dict:
         """
-        Tương tác với AI Agent
+        Gửi tin nhắn đến AI và nhận phản hồi
         
-        Returns a dict containing:
-            - 'response': text reply
-            - 'recommendations': list of recommendation objects (may be empty)
-            - 'should_create_order': bool flag signalling checkout/address step
-            - 'cart': current cart contents from context
+        Returns:
+            {
+                'ai_response': str,  # phản hồi từ AI
+                'products': list     # danh sách sản phẩm (để custom logic xử lý)
+            }
         """
-        # record user message
+        # Lưu tin nhắn từ user
         conversation.add_message('user', user_message)
         
-        # if we have a Gemini API key we prioritize it
-        if self.gemini_api_key:
+        # Ưu tiên Gemini nếu có API key
+        if self.gemini_api_key and GENAI_AVAILABLE:
             try:
-                ai_resp = self._call_gemini_api(conversation, user_message)
-                # merge cart state into response (cart might be updated inside _call_gemini_api)
-                ctx = conversation.get_context()
-                ai_resp['cart'] = ctx.get('cart', [])
-                return ai_resp
+                response = self._call_gemini_api(conversation, user_message)
+                # Lưu phản hồi từ AI với products
+                conversation.add_message('assistant', response['ai_response'], products=response.get('products', []))
+                return response
             except Exception as e:
-                print(f"Error calling Gemini API: {str(e)}")
-                # fall through to OpenAI
-
-        # otherwise fallback to OpenAI if we have api key
-        if self.api_key:
-            try:
-                ai_resp = self._call_openai_api(conversation, user_message)
-                # merge cart state into response
-                ctx = conversation.get_context()
-                ai_resp['cart'] = ctx.get('cart', [])
-                return ai_resp
-            except Exception as e:
-                print(f"Error calling OpenAI API: {str(e)}")
+                logger.error(f"Error calling Gemini API: {str(e)}")
         
-        return {
-            'response': "Xin lỗi, hiện tại tôi không thể kết nối với trí tuệ nhân tạo. Vui lòng kiểm tra lại cấu hình API.",
-            'recommendations': [],
-            'should_create_order': False,
-            'cart': []
-        }
+        # Fallback to OpenAI
+        if self.openai_api_key:
+            try:
+                response = self._call_openai_api(conversation, user_message)
+                # Lưu phản hồi từ AI với products
+                conversation.add_message('assistant', response['ai_response'], products=response.get('products', []))
+                return response
+            except Exception as e:
+                logger.error(f"Error calling OpenAI API: {str(e)}")
+        
+        # Fallback: Search products based on user message keywords
+        logger.warning("No API keys available - using fallback mode with keyword search")
+        response = self._get_fallback_response(user_message)
+        conversation.add_message('assistant', response['ai_response'], products=response.get('products', []))
+        
+        return response
 
     def _call_openai_api(self, conversation: ConversationSession, user_message: str) -> Dict:
         """Gọi OpenAI API"""
         headers = {
-            'Authorization': f'Bearer {self.api_key}',
+            'Authorization': f'Bearer {self.openai_api_key}',
             'Content-Type': 'application/json'
         }
         
-        # Chuẩn bị conversation history
+        # Prepare messages from conversation history
         messages = [{'role': 'system', 'content': self.system_prompt}]
         
         ctx = conversation.get_context()
         if 'messages' in ctx:
-            for msg in ctx['messages'][-10:]:  # Lấy 10 message gần đây nhất
+            # Lấy 10 message gần đây để giữ context
+            for msg in ctx['messages'][-10:]:
                 messages.append({
                     'role': msg['role'],
                     'content': msg['content']
                 })
         
-        # Thêm context sản phẩm
-        products_context = self.get_products_context()
-        messages[-1]['content'] = f"{messages[-1]['content']}\n\n{products_context}"
-        messages.append({'role': 'user', 'content': user_message})
-        
         payload = {
-            'model': self.model,
+            'model': self.openai_model,
             'messages': messages,
             'temperature': 0.7,
             'max_tokens': 1000
@@ -142,443 +194,723 @@ Tuyệt đối chỉ dùng block này khi khách quyết định chốt mua.
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
             headers=headers,
-            json=payload
+            json=payload,
+            timeout=30
         )
         
         response.raise_for_status()
         result = response.json()
         
-        assistant_message = result['choices'][0]['message']['content']
+        ai_response = result['choices'][0]['message']['content']
         
-        # Thêm response vào conversation
-        conversation.add_message('assistant', assistant_message)
+        # Trích xuất sản phẩm từ response và clean text
+        cleaned_response, products = self._extract_products_from_response(ai_response)
         
-        # Parse recommendations từ response (nếu có)
-        recommendations = self._extract_recommendations(assistant_message)
-        # augment with product info if product_id provided and persist
-        for rec in recommendations:
-            pid = rec.get('product_id')
-            if pid:
-                try:
-                    prod = Product.objects.get(id=pid)
-                    rec.setdefault('product_name', prod.name)
-                    rec.setdefault('price', int(prod.price) if prod.price is not None else 0)
-                    if prod.main_image and hasattr(prod.main_image, 'url'):
-                        rec.setdefault('image_url', self._full_url(prod.main_image.url))
-                    # save to db
-                    try:
-                        AIRecommendation.objects.create(
-                            conversation=conversation,
-                            product=prod,
-                            reason=rec.get('reason', ''),
-                            confidence_score=rec.get('confidence_score', rec.get('confidence', 0)),
-                            quantity=rec.get('quantity', 1)
-                        )
-                    except Exception:
-                        pass
-                except Product.DoesNotExist:
-                    pass
         return {
-            'response': assistant_message,
-            'recommendations': recommendations,
-            'should_create_order': False
+            'ai_response': cleaned_response,
+            'products': products
         }
 
     def _call_gemini_api(self, conversation: ConversationSession, user_message: str) -> Dict:
-        """Call Gemini API (using new google.genai package) and parse special JSON blocks for multi-item checkouts"""
+        """Gọi Gemini API"""
         try:
-            # Create client with the new google.genai API
             client = genai.Client(api_key=self.gemini_api_key)
             
+            # Prepare conversation history
             history_text = ""
             ctx = conversation.get_context()
             if 'messages' in ctx:
                 for msg in ctx['messages'][-10:]:
                     role = "User" if msg['role'] == "user" else "Assistant"
                     history_text += f"{role}: {msg['content']}\n"
-                    
-            products_context = self.get_products_context()
             
-            prompt = (
-                f"System Instruction:\n{self.system_prompt}\n\n"
-                f"Context (Available Products):\n{products_context}\n\n"
-                f"Conversation History:\n{history_text}\n"
-                f"User: {user_message}\nAssistant:"
-            )
+            # Prepare the full prompt
+            full_prompt = f"""{self.system_prompt}
+
+Lịch sử trò chuyện:
+{history_text}
+
+Khách hàng: {user_message}
+
+Trợ lý:"""
             
-            # Call the new API
+            # Call Gemini API
             response = client.models.generate_content(
-                model='models/gemini-2.5-flash',
-                contents=prompt
+                model="gemini-2.5-flash",
+                contents=full_prompt
             )
             
-            assistant_message = response.text
+            ai_response = response.text if response.text else "Không thể tạo phản hồi"
             
-            should_create_order = False
-            cart = ctx.get('cart', [])
+            # Trích xuất sản phẩm từ response và clean text
+            cleaned_response, products = self._extract_products_from_response(ai_response)
             
-            # Check for checkout JSON block
-            json_match = re.search(r'```json\s*(\{.*?"action"\s*:\s*"checkout".*?\})\s*```', assistant_message, re.DOTALL)
-            if json_match:
-                try:
-                    data = json.loads(json_match.group(1))
-                    if data.get('action') == 'checkout':
-                        items = data.get('items', [])
-                        if items:
-                            should_create_order = True
-                            new_cart = []
-                            for item in items:
-                                pid = item.get('product_id')
-                                if not pid:
-                                    continue
-                                try:
-                                    product = Product.objects.get(id=pid)
-                                    new_cart.append({
-                                        'product_id': product.id,
-                                        'name': product.name,
-                                        'price': int(product.price) if product.price is not None else 0,
-                                        'size': str(item.get('size') or item.get('unit') or ''),
-                                        'quantity': int(item.get('quantity', 1))
-                                    })
-                                except Product.DoesNotExist:
-                                    continue
-                                    
-                            # overwrite cart with the auto-detected multi-items
-                            if new_cart:
-                                cart = new_cart
-                                ctx['cart'] = cart
-                                conversation.set_context(ctx)
-                                
-                            # strip the secret JSON from the visible message
-                            assistant_message = assistant_message[:json_match.start()].strip()
-                except Exception as e:
-                    print(f"Error parsing Gemini JSON checkout block: {e}")
-                    
-            conversation.add_message('assistant', assistant_message)
-            recommendations = self._extract_recommendations(assistant_message)
-            
-            # Optionally populate more recommendations from cart so the UI can show them nicely
-            if should_create_order and cart:
-                 for item in cart:
-                     try:
-                         prod = Product.objects.get(id=item['product_id'])
-                         # Check if already in recommendations
-                         if not any(r['product_id'] == prod.id for r in recommendations):
-                             rec = {
-                                 'product_id': prod.id,
-                                 'product_name': prod.name,
-                                 'price': int(prod.price) if prod.price is not None else 0,
-                                 'quantity': item.get('quantity', 1),
-                                 'reason': "Được chọn mua",
-                                 'image_url': self._full_url(prod.main_image.url) if prod.main_image and hasattr(prod.main_image, 'url') else ''
-                             }
-                             recommendations.append(rec)
-                     except Product.DoesNotExist:
-                         pass
-                         
             return {
-                'response': assistant_message,
-                'recommendations': recommendations,
-                'should_create_order': should_create_order,
-                'cart': cart
+                'ai_response': cleaned_response,
+                'products': products
             }
+            
         except Exception as e:
-            print(f"Error calling new Gemini API: {str(e)}")
-            raise
+            raise e
 
-
-    def _full_url(self, path: str) -> str:
-        """Helper: nếu đường dẫn tương đối, thêm tiền tố BASE_URL hoặc localhost"""
-        if not path:
-            return ''
-        if path.startswith('http'):
-            return path
-        base = getattr(settings, 'BASE_URL', '') or 'http://localhost:8000'
-        return base.rstrip('/') + path
-
-    def _extract_recommendations(self, ai_response: str) -> List[Dict]:
-        """Extract recommendations từ AI response - tìm sản phẩm được nhắc đến trong text"""
-        recommendations = []
+    def _get_fallback_response(self, user_message: str) -> Dict:
+        """
+        Fallback mode khi không có API keys
+        - Tìm kiếm sản phẩm dựa trên keywords từ user message
+        - Trả về response với products tìm được
         
+        Args:
+            user_message: Tin nhắn từ user
+            
+        Returns:
+            Dict với ai_response và products list
+        """
         try:
-            # Loại bỏ markdown formatting để dễ tìm sản phẩm
-            clean_response = re.sub(r'\*\*|\*|__', '', ai_response)
-            response_lower = clean_response.lower()
+            # Trích xuất keywords từ user message
+            keywords = self._extract_keywords_from_message(user_message)
             
-            # Lấy tất cả sản phẩm active
-            products = Product.objects.filter(status='active')
+            # Tìm kiếm sản phẩm
+            products_data = []
+            if keywords:
+                # Search products by keywords
+                products_found = self.search_products_by_keyword(' '.join(keywords), limit=5)
+                products_data = products_found
+            else:
+                # Nếu không tìm được keywords, trả về top products
+                try:
+                    top_products = Product.objects.filter(status='active').order_by('-sold_count')[:5]
+                    for product in top_products:
+                        products_data.append({
+                            'id': product.id,
+                            'name': product.name,
+                            'price': int(product.price),
+                            'stock': product.stock,
+                            'image_url': self._get_product_image_url(product),
+                            'quantity': 1
+                        })
+                except Exception as e:
+                    logger.error(f"Error getting top products: {str(e)}")
             
-            # Tìm các sản phẩm được nhắc đến trong response
-            # Grouped by name để tránh duplicate
-            found_by_name = {}
-            
-            for product in products:
-                product_lower = product.name.lower()
+            # Tạo response text
+            if products_data:
+                ai_response = f"""Cảm ơn bạn! Tôi tìm thấy một số sản phẩm phù hợp với yêu cầu của bạn:
+
+{', '.join([p['name'] for p in products_data[:3]])}
+
+Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
+            else:
+                ai_response = "Xin lỗi, tôi không tìm thấy sản phẩm phù hợp. Bạn có thể mô tả chi tiết hơn hoặc xem danh mục sản phẩm của chúng tôi?"
                 
-                # Kiểm tra xem tên sản phẩm có trong response không
-                if product_lower in response_lower:
-                    if product.name not in found_by_name:
-                        found_by_name[product.name] = product
-                    else:
-                        # Nếu trùng tên, ưu tiên cái có giá cao hơn
-                        if product.price and found_by_name[product.name].price:
-                            if product.price > found_by_name[product.name].price:
-                                found_by_name[product.name] = product
+            return {
+                'ai_response': ai_response,
+                'products': products_data
+            }
             
-            # Convert grouped dict to list of recommendations
-            for product_name, product in found_by_name.items():
-                rec = {
-                    'product_id': product.id,
-                    'product_name': product.name,
-                    'price': int(product.price) if product.price else 0,
-                    'quantity': 1,
-                    'reason': 'Được đề xuất',
-                    'confidence_score': 0.8,
-                    'image_url': self._full_url(product.main_image.url) if product.main_image and hasattr(product.main_image, 'url') else ''
+        except Exception as e:
+            logger.error(f"Error in fallback response: {str(e)}")
+            return {
+                'ai_response': "Xin lỗi, có lỗi xảy ra. Vui lòng thử lại.",
+                'products': []
+            }
+
+    def _extract_keywords_from_message(self, message: str) -> List[str]:
+        """
+        Trích xuất keywords từ user message để tìm kiếm sản phẩm
+        
+        Args:
+            message: User message
+            
+        Returns:
+            List các keywords
+        """
+        try:
+            # Loại bỏ các từ phổ biến (stopwords)
+            common_words = {
+                'là', 'cái', 'chiếc', 'em', 'bé', 'nhỏ', 'lớn', 'cao', 'thấp',
+                'tôi', 'bạn', 'tôi muốn', 'tôi cần', 'có', 'không', 'gì', 'nào',
+                'và', 'hoặc', 'nhưng', 'vì', 'khi', 'mà', 'để', 'trong', 'ngoài'
+            }
+            
+            # Convert to lowercase và split
+            words = message.lower().split()
+            
+            # Filter stopwords
+            keywords = [w.strip('.,!?;:') for w in words if w.strip('.,!?;:') not in common_words and len(w.strip('.,!?;:')) > 2]
+            
+            return keywords[:5]  # Limit to 5 keywords
+        except Exception as e:
+            logger.error(f"Error extracting keywords: {str(e)}")
+            return []
+
+    def _extract_products_from_response(self, ai_response: str) -> tuple:
+        """
+        Trích xuất tên sản phẩm từ response của AI
+        Sử dụng cải tiến fuzzy matching
+        Trả về: (cleaned_response, products_list)
+        """
+        result = self.improve_product_extraction(ai_response)
+        
+        # Format products cho return
+        products = []
+        for product in result['products']:
+            prod_obj = Product.objects.filter(id=product['id']).first()
+            if prod_obj:
+                prod_data = {
+                    'id': product['id'],
+                    'name': product['name'],
+                    'price': product['price'],
+                    'description': product['description'],
+                    'stock': product['stock'],
+                    'image_url': self._get_product_image_url(prod_obj),
+                    'quantity': 1  # Default quantity
                 }
-                recommendations.append(rec)
-            
-        except Exception as e:
-            print(f"Error extracting recommendations: {e}")
-            
-        return recommendations
-
-    def analyze_product_question(self, question: str) -> Dict:
-        """
-        Phân tích câu hỏi của user về sản phẩm gấu bông
-        Trả về: {
-            'display_type': 'detail' | 'list' | 'comparison' | 'recommendation',
-            'product_ids': [list of product IDs],
-            'filters': {...filter criteria...},
-            'analysis': 'AI analysis text'
-        }
-        """
-        try:
-            if self.gemini_api_key:
-                return self._analyze_with_gemini(question)
-            elif self.api_key:
-                return self._analyze_with_openai(question)
-        except Exception as e:
-            print(f"Error analyzing question: {e}")
+                products.append(prod_data)
         
-        return self._default_analysis(question)
+        return result['cleaned_response'], products[:5]  # Limit to 5 products
 
-    def _analyze_with_gemini(self, question: str) -> Dict:
-        """Phân tích câu hỏi dùng Gemini API (new google.genai package)"""
+    def _clean_response_text(self, text: str, product_names: List[str]) -> str:
+        """
+        Xóa bỏ các dòng text mô tả chi tiết sản phẩm
+        Giữ lại phần giới thiệu chung
+        """
+        if not product_names:
+            return text
+        
+        lines = text.split('\n')
+        cleaned_lines = []
+        skip_next_line = False
+        
+        for i, line in enumerate(lines):
+            # Kiểm tra nếu dòng này chứa tên sản phẩm
+            contains_product = any(product.lower() in line.lower() for product in product_names)
+            
+            if contains_product:
+                # Skip dòng này và một hoặc hai dòng tiếp theo nếu chúng là chi tiết
+                skip_next_line = True
+                continue
+            elif skip_next_line:
+                # Kiểm tra nếu dòng này là chi tiết (giá, mô tả)
+                if any(keyword in line.lower() for keyword in ['đ', 'giá', 'mô tả', 'đặc điểm', 'size', 'màu']):
+                    continue
+                else:
+                    skip_next_line = False
+                    if line.strip():  # Chỉ thêm nếu không trống
+                        cleaned_lines.append(line)
+            else:
+                if line.strip():  # Chỉ thêm những dòng không trống
+                    cleaned_lines.append(line)
+        
+        # Xóa bỏ các dòng trống thừa ở cuối
+        while cleaned_lines and not cleaned_lines[-1].strip():
+            cleaned_lines.pop()
+        
+        cleaned_text = '\n'.join(cleaned_lines)
+        
+        # Nếu text trống sau khi clean, trả về giới thiệu mặc định
+        if not cleaned_text.strip():
+            cleaned_text = "Tôi có các sản phẩm phù hợp cho bạn:"
+        
+        return cleaned_text
+
+    def close_conversation(self, conversation: ConversationSession) -> None:
+        """Đóng phiên hội thoại"""
+        conversation.is_active = False
+        conversation.save()
+
+    def get_conversation_history(self, conversation: ConversationSession) -> Dict:
+        """Lấy lịch sử cuộc trò chuyện"""
+        ctx = conversation.get_context()
+        return {
+            'session_id': conversation.session_id,
+            'messages': ctx.get('messages', [])
+        }
+    
+    def get_product_details(self, product_id: int) -> Optional[Dict]:
+        """
+        Lấy chi tiết sản phẩm cho chatbot
+        
+        Args:
+            product_id: ID sản phẩm
+            
+        Returns:
+            Dict chứa thông tin sản phẩm hoặc None nếu không tồn tại
+        """
         try:
-            client = genai.Client(api_key=self.gemini_api_key)
+            product = Product.objects.get(id=product_id, status='active')
             
-            analysis_prompt = f"""Bạn là AI assistant phân tích câu hỏi của khách hàng về sản phẩm gấu bông.
-
-Phân tích câu hỏi sau và xác định:
-1. display_type: 'detail' (tìm 1 sản phẩm cụ thể), 'list' (tìm nhiều sản phẩm), 'comparison' (so sánh các sản phẩm), 'recommendation' (yêu cầu gợi ý)
-2. Các điều kiện lọc: giá, kích cỡ, màu sắc, độ tuổi, v.v.
-3. Tên gấu bông cụ thể (nếu có)
-
-Câu hỏi: {question}
-
-Trả lời bằng JSON format:
-{{
-  "display_type": "detail|list|comparison|recommendation",
-  "filters": {{
-    "price_range": {{"min": 0, "max": 5000000}},
-    "size": "tên kích cỡ nếu có",
-    "color": "màu sắc nếu có",
-    "search_keyword": "từ khóa tìm kiếm chính"
-  }},
-  "analysis": "Phân tích ngắn về câu hỏi (tiếng Việt)"
-}}"""
+            # Lấy thông tin biến thể
+            variants = []
+            if product.variants.exists():
+                variants = [
+                    {
+                        'id': v.id,
+                        'size': v.size,
+                        'price': int(v.price) if v.price else int(product.price),
+                        'stock': v.stock
+                    }
+                    for v in product.variants.all()
+                ]
             
-            response = client.models.generate_content(
-                model='models/gemini-2.5-flash',
-                contents=analysis_prompt
-            )
+            # Lấy hình ảnh
+            images = []
             try:
-                # Extract JSON from response
-                json_match = re.search(r'\{.*?\}', response.text, re.DOTALL)
-                if json_match:
-                    result = json.loads(json_match.group())
-                    # Tìm sản phẩm dựa trên filters
-                    result['product_ids'] = self._find_products_by_filters(result.get('filters', {}))
-                    return result
-            except (json.JSONDecodeError, AttributeError) as e:
-                print(f"Error parsing Gemini response: {e}")
+                if product.images:
+                    images = json.loads(product.images) if isinstance(product.images, str) else product.images
+            except (json.JSONDecodeError, TypeError):
+                pass
             
-            return self._default_analysis(question)
-        except Exception as e:
-            print(f"Error calling Gemini API: {e}")
-            return self._default_analysis(question)
-
-    def _analyze_with_openai(self, question: str) -> Dict:
-        """Phân tích câu hỏi dùng OpenAI API"""
-        headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json'
-        }
+            # Lấy thông số kỹ thuật
+            specs = {}
+            try:
+                if product.specifications:
+                    specs = json.loads(product.specifications) if isinstance(product.specifications, str) else product.specifications
+            except (json.JSONDecodeError, TypeError):
+                pass
+            
+            # Xây dựng response
+            main_image_url = None
+            if product.main_image and hasattr(product.main_image, 'url'):
+                main_image_url = product.main_image.url
+                if not main_image_url.startswith('http'):
+                    base_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+                    main_image_url = base_url.rstrip('/') + main_image_url
+            
+            discount_percentage = 0
+            if product.old_price and product.price and product.old_price > product.price:
+                discount_percentage = int(((product.old_price - product.price) / product.old_price) * 100)
+            
+            return {
+                'id': product.id,
+                'name': product.name,
+                'slug': product.slug,
+                'category': product.category.name if product.category else None,
+                'price': int(product.price),
+                'old_price': int(product.old_price) if product.old_price else None,
+                'discount_percentage': discount_percentage,
+                'stock': product.stock,
+                'unit': product.unit,
+                'rating': float(product.rating),
+                'reviews_count': product.reviews_count,
+                'sold_count': product.sold_count,
+                'description': product.description or '',
+                'detail_description': product.detail_description or '',
+                'main_image_url': main_image_url,
+                'images': images,
+                'specifications': specs,
+                'origin': product.origin or '',
+                'guarantee': product.guarantee or '',
+                'variants': variants,
+                'in_stock': product.stock > 0
+            }
+        except Product.DoesNotExist:
+            return None
+    
+    def add_to_cart_from_chatbot(self, user, product_id: int, quantity: int = 1, unit: str = '') -> Dict:
+        """
+        Thêm sản phẩm vào giỏ hàng từ chatbot
+        Hỗ trợ cả anonymous users (lưu vào conversation context)
         
-        analysis_prompt = f"""Bạn là AI assistant phân tích câu hỏi của khách hàng về sản phẩm gấu bông.
-
-Phân tích câu hỏi sau và xác định:
-1. display_type: 'detail' (tìm 1 sản phẩm cụ thể), 'list' (tìm nhiều sản phẩm), 'comparison' (so sánh các sản phẩm), 'recommendation' (yêu cầu gợi ý)
-2. Các điều kiện lọc: giá, kích cỡ, màu sắc, độ tuổi, v.v.
-3. Tên gấu bông cụ thể (nếu có)
-
-Câu hỏi: {question}
-
-Trả lời bằng JSON format:
-{{
-  "display_type": "detail|list|comparison|recommendation",
-  "filters": {{
-    "price_range": {{"min": 0, "max": 5000000}},
-    "size": "tên kích cỡ nếu có",
-    "color": "màu sắc nếu có",
-    "search_keyword": "từ khóa tìm kiếm chính"
-  }},
-  "analysis": "Phân tích ngắn về câu hỏi (tiếng Việt)"
-}}"""
-        
-        payload = {
-            'model': self.model,
-            'messages': [
-                {'role': 'system', 'content': 'You are a JSON response generator. Always respond with valid JSON only.'},
-                {'role': 'user', 'content': analysis_prompt}
-            ],
-            'temperature': 0.3,
-            'max_tokens': 500
-        }
+        Args:
+            user: User object hoặc None (anonymous)
+            product_id: ID sản phẩm
+            quantity: Số lượng
+            unit: Kích thước/biến thể sản phẩm
+            
+        Returns:
+            Dict chứa thông tin cart item hoặc error
+        """
+        from orders.models import Cart, CartItem
         
         try:
-            response = requests.post(
-                'https://api.openai.com/v1/chat/completions',
-                headers=headers,
-                json=payload,
-                timeout=10
-            )
-            response.raise_for_status()
-            result = response.json()
+            # Lấy sản phẩm
+            product = Product.objects.get(id=product_id, status='active')
             
-            if result.get('choices'):
-                content = result['choices'][0]['message']['content']
-                json_match = re.search(r'\{.*?\}', content, re.DOTALL)
-                if json_match:
-                    parsed = json.loads(json_match.group())
-                    # Tìm sản phẩm dựa trên filters
-                    parsed['product_ids'] = self._find_products_by_filters(parsed.get('filters', {}))
-                    return parsed
+            # Kiểm tra stock
+            if unit and product.variants.exists():
+                variant = product.variants.filter(size=unit).first()
+                if not variant:
+                    return {
+                        'error': f'Kích thước {unit} không tồn tại',
+                        'success': False
+                    }
+                if variant.stock < quantity:
+                    return {
+                        'error': f'Số lượng tồn kho không đủ. Tồn kho: {variant.stock}',
+                        'success': False
+                    }
+                item_price = int(variant.price) if variant.price else int(product.price)
+            else:
+                if product.stock < quantity:
+                    return {
+                        'error': f'Số lượng tồn kho không đủ. Tồn kho: {product.stock}',
+                        'success': False
+                    }
+                item_price = int(product.price)
+            
+            # Nếu là authenticated user, lưu vào Cart model
+            if user and user.is_authenticated:
+                cart, created = Cart.objects.get_or_create(user=user)
+                
+                # Kiểm tra item đã tồn tại
+                cart_item = CartItem.objects.filter(
+                    cart=cart,
+                    product_id=product_id,
+                    unit=unit
+                ).first()
+                
+                if cart_item:
+                    cart_item.quantity += quantity
+                    cart_item.save()
+                else:
+                    cart_item = CartItem.objects.create(
+                        cart=cart,
+                        product_id=product_id,
+                        quantity=quantity,
+                        price=item_price,
+                        unit=unit
+                    )
+                
+                return {
+                    'success': True,
+                    'message': f'Đã thêm {quantity} {product.name} vào giỏ hàng',
+                    'product_id': product_id,
+                    'quantity': cart_item.quantity,
+                    'total_items': sum(
+                        item.quantity for item in CartItem.objects.filter(cart=cart)
+                    )
+                }
+            else:
+                # Reference for anonymous user to add to cart locally
+                return {
+                    'success': True,
+                    'message': 'Sản phẩm đã được chọn. Vui lòng đăng nhập để hoàn tất thêm vào giỏ hàng',
+                    'product': {
+                        'id': product_id,
+                        'name': product.name,
+                        'price': item_price,
+                        'quantity': quantity,
+                        'unit': unit,
+                        'image_url': self._get_product_image_url(product)
+                    }
+                }
+        except Product.DoesNotExist:
+            return {'error': 'Sản phẩm không tồn tại', 'success': False}
         except Exception as e:
-            print(f"Error calling OpenAI: {e}")
+            logger.error(f"Error adding to cart: {str(e)}")
+            return {'error': 'Lỗi khi thêm vào giỏ hàng', 'success': False}
+    
+    def create_buy_now_order(self, user, product_id: int, quantity: int = 1, unit: str = '') -> Dict:
+        """
+        Xử lý "Mua ngay" bằng cách thêm vào giỏ hàng
+        Vì "Mua ngay" cần lấy thông tin địa chỉ, ta thêm vào giỏ và user sẽ hoàn tất ở checkout page
         
-        return self._default_analysis(question)
-
-    def _find_products_by_filters(self, filters: Dict) -> List[int]:
-        """Tìm sản phẩm dựa trên filters"""
-        queryset = Product.objects.filter(status='active')
+        Args:
+            user: User object
+            product_id: ID sản phẩm
+            quantity: Số lượng
+            unit: Kích thước/biến thể
+            
+        Returns:
+            Dict chứa thông tin hoặc error
+        """
+        from orders.models import Cart, CartItem
+        from decimal import Decimal
         
-        # Filter by keyword
-        keyword = filters.get('search_keyword', '').strip()
-        if keyword:
-            queryset = queryset.filter(
-                Q(name__icontains=keyword) | 
+        try:
+            if not user or not user.is_authenticated:
+                return {'error': 'Vui lòng đăng nhập để mua hàng', 'success': False}
+            
+            # Lấy sản phẩm
+            product = Product.objects.get(id=product_id, status='active')
+            
+            # Kiểm tra stock
+            if unit and product.variants.exists():
+                variant = product.variants.filter(size=unit).first()
+                if not variant:
+                    return {'error': f'Kích thước {unit} không tồn tại', 'success': False}
+                if variant.stock < quantity:
+                    return {'error': f'Số lượng tồn kho không đủ. Tồn kho: {variant.stock}', 'success': False}
+                item_price = int(variant.price) if variant.price else int(product.price)
+            else:
+                if product.stock < quantity:
+                    return {'error': f'Số lượng tồn kho không đủ. Tồn kho: {product.stock}', 'success': False}
+                item_price = int(product.price)
+            
+            # Thêm vào giỏ hàng
+            cart, created = Cart.objects.get_or_create(user=user)
+            
+            # Kiểm tra item đã tồn tại
+            cart_item = CartItem.objects.filter(
+                cart=cart,
+                product_id=product_id,
+                unit=unit
+            ).first()
+            
+            if cart_item:
+                cart_item.quantity += quantity
+                cart_item.save()
+            else:
+                cart_item = CartItem.objects.create(
+                    cart=cart,
+                    product_id=product_id,
+                    quantity=quantity,
+                    price=item_price,
+                    unit=unit
+                )
+            
+            # Tính tổng items trong giỏ
+            total_items = sum(item.quantity for item in CartItem.objects.filter(cart=cart))
+            
+            return {
+                'success': True,
+                'message': f'Sản phẩm "{product.name}" đã được thêm vào giỏ hàng. Vui lòng tiếp tục để thanh toán.',
+                'product_id': product_id,
+                'product_name': product.name,
+                'quantity': cart_item.quantity,
+                'total_items': total_items,
+                'redirect_to_checkout': True  # Frontend có thể dùng flag này để redirect
+            }
+        except Product.DoesNotExist:
+            return {'error': 'Sản phẩm không tồn tại', 'success': False}
+        except Exception as e:
+            logger.error(f"Error in buy now order: {str(e)}")
+            return {'error': f'Lỗi khi xử lý mua ngay: {str(e)}', 'success': False}
+    
+    def _get_product_image_url(self, product) -> Optional[str]:
+        """Helper để lấy URL hình ảnh sản phẩm"""
+        if product.main_image and hasattr(product.main_image, 'url'):
+            image_url = product.main_image.url
+            if not image_url.startswith('http'):
+                base_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+                image_url = base_url.rstrip('/') + image_url
+            return image_url
+        return None
+    
+    def search_products_by_keyword(self, keyword: str, limit: int = 10) -> List[Dict]:
+        """
+        Tìm kiếm sản phẩm theo từ khóa
+        
+        Args:
+            keyword: Từ khóa tìm kiếm
+            limit: Số lượng kết quả tối đa
+            
+        Returns:
+            Danh sách sản phẩm phù hợp
+        """
+        try:
+            products = Product.objects.filter(
+                status='active'
+            ).filter(
+                Q(name__icontains=keyword) |
                 Q(description__icontains=keyword) |
                 Q(detail_description__icontains=keyword)
-            )
-        
-        # Filter by price
-        price_range = filters.get('price_range', {})
-        if price_range:
-            min_price = price_range.get('min', 0)
-            max_price = price_range.get('max')
-            if min_price:
-                queryset = queryset.filter(price__gte=min_price)
-            if max_price:
-                queryset = queryset.filter(price__lte=max_price)
-        
-        # Filter by size (if applicable)
-        size = filters.get('size', '').strip()
-        if size:
-            queryset = queryset.filter(
-                Q(variants__size__icontains=size) |
-                Q(unit__icontains=size)
-            ).distinct()
-        
-        return list(queryset.values_list('id', flat=True)[:20])
-
-    def _default_analysis(self, question: str) -> Dict:
-        """Default analysis khi không thể kết nối AI"""
-        # Simple keyword matching
-        question_lower = question.lower()
-        products = Product.objects.filter(status='active')
-        
-        # Xác định display type dựa trên từ khóa
-        display_type = 'recommendation'
-        if 'so sánh' in question_lower or 'khác nhau' in question_lower:
-            display_type = 'comparison'
-        elif 'chi tiết' in question_lower or 'thông tin' in question_lower:
-            display_type = 'detail'
-        elif 'tất cả' in question_lower or 'toàn bộ' in question_lower:
-            display_type = 'list'
-        
-        # Simple keyword search
-        keywords = re.findall(r'\w+', question_lower)
-        product_ids = []
-        
-        for keyword in keywords:
-            if len(keyword) > 2:
-                matches = products.filter(
-                    Q(name__icontains=keyword) |
-                    Q(description__icontains=keyword)
-                ).values_list('id', flat=True)[:5]
-                product_ids.extend(matches)
-        
-        return {
-            'display_type': display_type,
-            'product_ids': list(set(product_ids)[:10]),
-            'filters': {'search_keyword': ' '.join(keywords)},
-            'analysis': f"Tìm kiếm sản phẩm dựa trên: {question}"
-        }
-
-    def create_order_from_recommendations(self, 
-                                        conversation: ConversationSession,
-                                        product_ids: List[int],
-                                        quantities: Dict[int, int],
-                                        order_info: Dict) -> AutomatedOrder:
-        """Tạo draft order từ recommendations"""
-        
-        automated_order = AutomatedOrder.objects.create(
-            conversation=conversation,
-            user=conversation.user,
-            status='draft',
-            full_name=order_info.get('full_name', conversation.user.full_name),
-            phone=order_info.get('phone', conversation.user.phone),
-            email=order_info.get('email', conversation.user.email),
-            address=order_info.get('address', conversation.user.address or ''),
-            city=order_info.get('city', ''),
-            district=order_info.get('district', ''),
-            shipping_fee=30000
-        )
-        
-        # Lưu suggested products
-        products_data = []
-        total = 0
-        
-        for product_id in product_ids:
-            try:
-                product = Product.objects.get(id=product_id)
-                qty = quantities.get(product_id, 1)
-                products_data.append({
-                    'product_id': product_id,
+            )[:limit]
+            
+            result = []
+            for product in products:
+                result.append({
+                    'id': product.id,
                     'name': product.name,
-                    'price': float(product.price),
-                    'quantity': qty,
-                    'size': order_info.get('sizes', {}).get(str(product_id), ''),
-                    'subtotal': float(product.price) * qty
+                    'price': int(product.price),
+                    'category': product.category.name if product.category else None,
+                    'description': product.description or '',
+                    'rating': float(product.rating),
+                    'stock': product.stock,
+                    'image_url': self._get_product_image_url(product)
                 })
-                total += float(product.price) * qty
-            except Product.DoesNotExist:
-                continue
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error searching products: {str(e)}")
+            return []
+    
+    def search_products_by_category(self, category_name: str, limit: int = 10) -> List[Dict]:
+        """
+        Tìm kiếm sản phẩm theo danh mục
         
-        automated_order.set_suggested_products(products_data)
-        automated_order.estimated_total = int(total) + 30000
-        automated_order.save()
+        Args:
+            category_name: Tên danh mục
+            limit: Số lượng kết quả tối đa
+            
+        Returns:
+            Danh sách sản phẩm trong danh mục
+        """
+        try:
+            products = Product.objects.filter(
+                status='active',
+                category__name__icontains=category_name
+            )[:limit]
+            
+            result = []
+            for product in products:
+                result.append({
+                    'id': product.id,
+                    'name': product.name,
+                    'price': int(product.price),
+                    'category': product.category.name if product.category else None,
+                    'description': product.description or '',
+                    'rating': float(product.rating),
+                    'stock': product.stock,
+                    'image_url': self._get_product_image_url(product)
+                })
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error searching by category: {str(e)}")
+            return []
+    
+    def get_product_recommendations(self, product_id: int = None, limit: int = 5) -> List[Dict]:
+        """
+        Lấy danh sách sản phẩm được độc giả gợi ý
+        Nếu có product_id, lấy các sản phẩm liên quan
+        Nếu không, lấy các sản phẩm bán chạy nhất
         
-        return automated_order
+        Args:
+            product_id: ID sản phẩm để lấy sản phẩm tương tự
+            limit: Số lượng gợi ý
+            
+        Returns:
+            Danh sách sản phẩm được gợi ý
+        """
+        try:
+            if product_id:
+                # Lấy product hiện tại
+                try:
+                    current_product = Product.objects.get(id=product_id, status='active')
+                    # Lấy sản phẩm cùng danh mục
+                    products = Product.objects.filter(
+                        status='active',
+                        category=current_product.category
+                    ).exclude(id=product_id).order_by('-sold_count', '-rating')[:limit]
+                except Product.DoesNotExist:
+                    products = Product.objects.filter(
+                        status='active'
+                    ).order_by('-sold_count', '-rating')[:limit]
+            else:
+                # Lấy sản phẩm bán chạy nhất
+                products = Product.objects.filter(
+                    status='active'
+                ).order_by('-sold_count', '-rating')[:limit]
+            
+            result = []
+            for product in products:
+                result.append({
+                    'id': product.id,
+                    'name': product.name,
+                    'price': int(product.price),
+                    'category': product.category.name if product.category else None,
+                    'sold_count': product.sold_count,
+                    'rating': float(product.rating),
+                    'image_url': self._get_product_image_url(product),
+                    'quantity': 1  # Default quantity for recommendations
+                })
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting recommendations: {str(e)}")
+            return []
+    
+    def get_all_products_dict(self) -> Dict[str, List]:
+        """
+        Lấy tất cả sản phẩm được organize theo danh mục
+        Hữu ích cho AI Agent để có hiểu biết toàn diện
+        
+        Returns:
+            Dict với key là danh mục, value là danh sách sản phẩm
+        """
+        try:
+            from categories.models import Category
+            
+            result = {}
+            categories = Category.objects.filter(products__status='active').distinct()
+            
+            for category in categories:
+                products = Product.objects.filter(
+                    status='active',
+                    category=category
+                ).values('id', 'name', 'price', 'rating', 'stock')
+                
+                result[category.name] = [
+                    {
+                        'id': p['id'],
+                        'name': p['name'],
+                        'price': int(p['price']),
+                        'rating': float(p['rating']),
+                        'in_stock': p['stock'] > 0
+                    }
+                    for p in products
+                ]
+            
+            return result
+        except Exception as e:
+            logger.error(f"Error getting products dict: {str(e)}")
+            return {}
+    
+    def improve_product_extraction(self, ai_response: str) -> Dict:
+        """
+        Cải tiến việc trích xuất sản phẩm từ response
+        Sử dụng fuzzy matching để tìm sản phẩm ngay cả khi tên không khớp hoàn toàn
+        
+        Returns:
+            {
+                'cleaned_response': str,  # Response đã được làm sạch
+                'products': List[Dict],   # Danh sách sản phẩm tìm được
+                'confidence': float       # Độ tự tin trong việc tìm sản phẩm
+            }
+        """
+        try:
+            from difflib import SequenceMatcher
+            
+            products = []
+            product_names = []
+            all_products = Product.objects.filter(status='active').values('id', 'name', 'price', 'description', 'stock')
+            
+            # Tìm sản phẩm có tên khớp hoặc gần giống
+            for product in all_products:
+                # Kiểm tra khớp chính xác
+                if product['name'].lower() in ai_response.lower():
+                    similarity = 1.0
+                else:
+                    # Kiểm tra khớp gần đúng với ratio >= 0.6
+                    max_ratio = 0
+                    for word in ai_response.lower().split():
+                        ratio = SequenceMatcher(None, word, product['name'].lower()).ratio()
+                        max_ratio = max(max_ratio, ratio)
+                    similarity = max_ratio
+                
+                if similarity >= 0.6:  # Ngưỡng khớp 60%
+                    product_data = {
+                        'id': product['id'],
+                        'name': product['name'],
+                        'price': int(product['price']),
+                        'description': product['description'] or '',
+                        'stock': product['stock'],
+                        'similarity': similarity
+                    }
+                    products.append(product_data)
+                    product_names.append(product['name'])
+            
+            # Sort theo similarity từ cao xuống thấp
+            products = sorted(products, key=lambda x: x['similarity'], reverse=True)[:5]
+            
+            # Tính confidence score (0-1)
+            if products:
+                avg_similarity = sum(p['similarity'] for p in products) / len(products)
+            else:
+                avg_similarity = 0
+            
+            # Clean response
+            cleaned_response = self._clean_response_text(ai_response, product_names)
+            
+            return {
+                'cleaned_response': cleaned_response,
+                'products': products,
+                'confidence': avg_similarity
+            }
+        except Exception as e:
+            logger.error(f"Error improving product extraction: {str(e)}")
+            return {
+                'cleaned_response': ai_response,
+                'products': [],
+                'confidence': 0
+            }

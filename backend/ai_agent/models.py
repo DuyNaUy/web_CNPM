@@ -34,18 +34,27 @@ class ConversationSession(models.Model):
         """Lưu context dưới dạng JSON"""
         self.context = json.dumps(data, ensure_ascii=False)
 
-    def add_message(self, role, content):
-        """Thêm message vào conversation history"""
+    def add_message(self, role, content, products=None):
+        """Thêm message vào conversation history với products optional"""
         ctx = self.get_context()
         if 'messages' not in ctx:
             ctx['messages'] = []
-        ctx['messages'].append({
+        message_obj = {
             'role': role,
             'content': content,
             'timestamp': timezone.now().isoformat()
-        })
+        }
+        # Thêm products nếu có (cho assistant messages)
+        if products:
+            message_obj['products'] = products
+        ctx['messages'].append(message_obj)
         self.set_context(ctx)
         self.save()
+
+    def get_conversation_with_products(self):
+        """Lấy messages với products data"""
+        ctx = self.get_context()
+        return ctx.get('messages', [])
 
 
 class AIRecommendation(models.Model):
