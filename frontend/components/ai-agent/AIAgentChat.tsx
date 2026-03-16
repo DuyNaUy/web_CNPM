@@ -35,6 +35,16 @@ interface Product {
   unit?: string;
   stock?: number;
   variants?: ProductVariant[];
+  sold_count?: number;
+  rating?: number;
+  similarity?: number;
+  isBestSeller?: boolean;
+  price_range?: {
+    min: number;
+    max: number;
+  };
+  min_price?: number;
+  max_price?: number;
 }
 
 interface FAQItem {
@@ -94,9 +104,21 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
 
   // Get available stock based on selected size or product stock
   const getAvailableStock = (): number => {
-    if (product.variants && product.variants.length > 0 && selectedSize) {
-      const selectedVariant = product.variants.find(v => v.size === selectedSize);
-      return selectedVariant?.stock || 0;
+    if (product.variants && product.variants.length > 0) {
+      if (selectedSize) {
+        const selectedVariant = product.variants.find(v => v.size === selectedSize);
+        return selectedVariant?.stock || 0;
+      }
+      // Nếu chưa chọn size, lấy stock tối đa từ tất cả variants
+      return Math.max(...product.variants.map(v => v.stock || 0), 0);
+    }
+    return product.stock || 0;
+  };
+
+  // Get total stock from all variants
+  const getTotalStock = (): number => {
+    if (product.variants && product.variants.length > 0) {
+      return product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
     }
     return product.stock || 0;
   };
@@ -110,20 +132,108 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
     return product.price || 0;
   };
 
+  // Get price range (min-max) - tối đa 3 giá khác nhau
+  const getPriceRange = (): { min: number; max: number; display: string } => {
+    if (product.variants && product.variants.length >= 2) {
+      const prices = product.variants
+        .filter(v => v.price > 0)
+        .map(v => v.price);
+      
+      if (prices.length > 0) {
+        const uniquePrices = Array.from(new Set(prices)).sort((a, b) => a - b);
+        const minPrice = Math.min(...uniquePrices);
+        const maxPrice = Math.max(...uniquePrices);
+        
+        // Nếu chỉ có 1 giá duy nhất
+        if (minPrice === maxPrice) {
+          return {
+            min: minPrice,
+            max: maxPrice,
+            display: new Intl.NumberFormat('vi-VN').format(minPrice)
+          };
+        }
+        
+        // Hiển thị min - max
+        return {
+          min: minPrice,
+          max: maxPrice,
+          display: `${new Intl.NumberFormat('vi-VN').format(minPrice)} - ${new Intl.NumberFormat('vi-VN').format(maxPrice)}`
+        };
+      }
+    }
+    
+    // Fallback: giá mặc định
+    const price = product.price || 0;
+    return {
+      min: price,
+      max: price,
+      display: new Intl.NumberFormat('vi-VN').format(price)
+    };
+  };
+
   const availableStock = getAvailableStock();
+  const totalStock = getTotalStock();
+  const priceRange = getPriceRange();
   
   const handleViewMore = async () => {
     console.log('[ProductCard] handleViewMore clicked for product:', product.id);
     try {
-      // Navigate to product detail page using ID (like customer product page does)
-      router.push(`/customer/products/${product.id}`);
+      setIsLoading(true);
+      
+      // Gọi API backend để lấy thông tin sản phẩm chi tiết cập nhật
+      console.log('[ProductCard] Fetching from API:', `/api/ai/conversations/${conversationId}/get_product_details/?product_id=${product.id}`);
+      const response = await fetch(
+        `/api/ai/conversations/${conversationId}/get_product_details/?product_id=${product.id}`
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const detailedProduct = data.product;
+        
+        console.log('[ProductCard] Received product details from API:', detailedProduct);
+        console.log('[ProductCard] Product images:', detailedProduct.product_images);
+        console.log('[ProductCard] Main image URL:', detailedProduct.main_image_url);
+        console.log('[ProductCard] Variants:', detailedProduct.variants);
+        console.log('[ProductCard] Stock info - stock:', detailedProduct.stock, 'in_stock:', detailedProduct.in_stock);
+        
+        // Lưu vào sessionStorage để trang sản phẩm có thể sử dụng
+        sessionStorage.setItem('productData', JSON.stringify(detailedProduct));
+        console.log('[ProductCard] Saved product data to sessionStorage');
+        
+        toastRef.current?.show({
+          severity: 'info',
+          summary: 'Đang tải',
+          detail: 'Đang mở chi tiết sản phẩm...',
+          life: 1500
+        });
+        
+        // Navigate to product detail page
+        setTimeout(() => {
+          console.log('[ProductCard] Navigating to product detail page');
+          router.push(`/customer/products/${product.id}`);
+        }, 500);
+      } else {
+        console.error('[ProductCard] Failed to fetch product details:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('[ProductCard] Error response:', errorText);
+        
+        // Fallback: Navigate without prepopulated data
+        toastRef.current?.show({
+          severity: 'warn',
+          summary: 'Cảnh báo',
+          detail: 'Sẽ mở trang chi tiết sản phẩm'
+        });
+        router.push(`/customer/products/${product.id}`);
+      }
     } catch (error) {
-      console.error('Failed to navigate:', error);
+      console.error('[ProductCard] Error in handleViewMore:', error);
       toastRef.current?.show({
         severity: 'error',
         summary: 'Lỗi',
         detail: 'Không thể mở chi tiết sản phẩm'
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -434,29 +544,57 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
               }}>
                 {product.name}
               </h2>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px' }}>
-                <span style={{ 
-                  fontSize: '32px', 
-                  fontWeight: 'bold',
-                  color: '#d63739',
-                  letterSpacing: '-0.5px'
-                }}>
-                  {getProductPrice().toLocaleString('vi-VN')}₫
-                </span>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', flexWrap: 'wrap' }}>
+                {/* Hiển thị giá - nếu còn chọn size thì hiển thị theo selection, nếu chưa chọn thì hiển thị min-max */}
+                {selectedSize && product.variants && product.variants.length > 0 ? (
+                  <span style={{ 
+                    fontSize: '32px', 
+                    fontWeight: 'bold',
+                    color: '#d63739',
+                    letterSpacing: '-0.5px'
+                  }}>
+                    {getProductPrice().toLocaleString('vi-VN')}₫
+                  </span>
+                ) : (
+                  <span style={{ 
+                    fontSize: '32px', 
+                    fontWeight: 'bold',
+                    color: '#d63739',
+                    letterSpacing: '-0.5px'
+                  }}>
+                    {priceRange.display}₫
+                  </span>
+                )}
+                
+                {/* Hiển thị giá cũ nếu có (optional) */}
+                {product.variants && product.variants.length > 0 && selectedSize && (
+                  <span style={{
+                    fontSize: '14px',
+                    color: '#999',
+                    textDecoration: 'line-through'
+                  }}>
+                    (Chọn size: {selectedSize})
+                  </span>
+                )}
               </div>
             </div>
 
             {/* Stock Status */}
             <div style={{
               padding: '12px',
-              backgroundColor: availableStock > 0 ? '#e6f7ed' : '#faddd1',
-              border: `2px solid ${availableStock > 0 ? '#52b788' : '#e76f51'}`,
+              backgroundColor: totalStock > 0 ? '#e6f7ed' : '#faddd1',
+              border: `2px solid ${totalStock > 0 ? '#52b788' : '#e76f51'}`,
               borderRadius: '8px',
               fontSize: '14px',
               fontWeight: '600',
-              color: availableStock > 0 ? '#1b5e20' : '#c41c3b'
+              color: totalStock > 0 ? '#1b5e20' : '#c41c3b'
             }}>
-              📦 {availableStock > 0 ? `Còn ${availableStock} sản phẩm` : 'Hết hàng'}
+              📦 {totalStock > 0 ? `Tồn kho: ${totalStock} sản phẩm` : 'Hết hàng'}
+              {product.variants && product.variants.length > 0 && selectedSize && (
+                <div style={{ fontSize: '12px', marginTop: '6px', opacity: 0.8 }}>
+                  (Size {selectedSize}: {availableStock} cái)
+                </div>
+              )}
             </div>
 
             {/* Description */}
@@ -506,11 +644,14 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
                         color: selectedSize === variant.size ? '#d63739' : '#333',
                         boxShadow: selectedSize === variant.size ? '0 2px 8px rgba(214,55,57,0.15)' : 'none'
                       }}
-                      title={variant.stock === 0 ? 'Hết hàng' : `${variant.size}`}
+                      title={variant.stock === 0 ? 'Hết hàng' : `Size ${variant.size} - ${variant.stock} cái`}
                     >
                       <div>{variant.size}</div>
                       <div style={{ fontSize: '12px', color: '#999', marginTop: '2px' }}>
-                        {variant.price.toLocaleString('vi-VN')}₫
+                        {variant.price.toLocaleString('vi-VN')}₫ 
+                        <div style={{ fontSize: '11px', marginTop: '2px', color: variant.stock > 0 ? '#2ecc71' : '#e74c3c' }}>
+                          ({variant.stock > 0 ? `${variant.stock} cái` : 'Hết'})
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -618,7 +759,7 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
                 </button>
               </div>
               <p style={{ fontSize: '12px', color: '#999', marginTop: '6px' }}>
-                Tối đa: {availableStock}
+                Tối đa: {availableStock} {selectedSize ? `(${selectedSize})` : '(tổng cộng)'}
               </p>
             </div>
 
@@ -708,6 +849,25 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
 
       {/* Product Card */}
       <div className={styles.productCard}>
+        {/* Best Seller Badge */}
+        {product.isBestSeller && (
+          <div style={{
+            position: 'absolute',
+            top: '-8px',
+            right: '10px',
+            backgroundColor: '#ff6b35',
+            color: 'white',
+            padding: '4px 12px',
+            borderRadius: '20px',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            zIndex: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}>
+            ⭐ Bán chạy
+          </div>
+        )}
+        
         {product.image_url && (
           <div className={styles.productImage}>
             <img src={product.image_url} alt={product.name} />
@@ -715,11 +875,31 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
         )}
         <div className={styles.productInfo}>
           <h4 className={styles.productName}>{product.name}</h4>
-          {getProductPrice() > 0 && (
-            <p className={styles.productPrice}>{getProductPrice().toLocaleString('vi-VN')} đ</p>
+          
+          {/* Price Display - hiển thị min-max nếu có nhiều variants */}
+          {product.variants && product.variants.length >= 2 ? (
+            <p className={styles.productPrice}>{priceRange.display} ₫</p>
+          ) : (
+            getProductPrice() > 0 && (
+              <p className={styles.productPrice}>{getProductPrice().toLocaleString('vi-VN')} ₫</p>
+            )
           )}
-          <p className={styles.productQuantity} style={{color: availableStock > 0 ? '#28a745' : '#dc3545'}}>
-            📦 Số lượng còn lại: {availableStock}
+          
+          {/* Price Range Display - fallback */}
+          {product.price_range && product.variants && product.variants.length < 2 && (
+            <p style={{
+              fontSize: '12px',
+              color: '#ff6b35',
+              margin: '4px 0 8px 0',
+              fontWeight: '600'
+            }}>
+              💰 {product.price_range.min.toLocaleString('vi-VN')} - {product.price_range.max.toLocaleString('vi-VN')} ₫
+            </p>
+          )}
+          
+          {/* Stock Display - hiển thị tổng stock từ tất cả variants */}
+          <p className={styles.productQuantity} style={{color: totalStock > 0 ? '#28a745' : '#dc3545'}}>
+            📦 Tồn kho: {totalStock > 0 ? totalStock : 'Hết hàng'}
           </p>
           
           {product.description && (
@@ -737,16 +917,16 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
           <button 
             className={styles.btnAddCart} 
             onClick={openAddToCartModal}
-            disabled={isLoading || availableStock === 0}
-            title={availableStock === 0 ? 'Sản phẩm đã hết hàng' : ''}
+            disabled={isLoading || totalStock === 0}
+            title={totalStock === 0 ? 'Sản phẩm đã hết hàng' : ''}
           >
             Thêm vào giỏ
           </button>
           <button 
             className={styles.btnBuyNow} 
             onClick={openBuyNowModal}
-            disabled={isLoading || availableStock === 0}
-            title={availableStock === 0 ? 'Sản phẩm đã hết hàng' : ''}
+            disabled={isLoading || totalStock === 0}
+            title={totalStock === 0 ? 'Sản phẩm đã hết hàng' : ''}
           >
             Mua ngay
           </button>
@@ -764,6 +944,26 @@ export default function AIAgentChat({
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+
+  // Helper function to sort and filter products by relevance and sales
+  const sortProductsByRelevance = (products: Product[]): Product[] => {
+    if (!products || products.length === 0) return [];
+    
+    // Calculate relevance score for each product (similarity + sales boost)
+    const productsWithScore = products.map((p: any) => ({
+      ...p,
+      relevanceScore: (p.similarity || 0.5) + ((p.sold_count || 0) / 100) * 0.3,
+      isBestSeller: (p.sold_count || 0) > 5
+    }));
+    
+    // Sort by relevance score (descending)
+    const sorted = productsWithScore.sort((a: any, b: any) => 
+      (b.relevanceScore || 0) - (a.relevanceScore || 0)
+    );
+    
+    // Return top 5 products (minimum 3 if available)
+    return sorted.slice(0, 5);
+  };
 
   // Guard: Check if conversationId is valid
   if (!conversationId) {
@@ -969,7 +1169,7 @@ export default function AIAgentChat({
                     <>
                       {console.log('[AIAgentChat] Rendering products:', msg.products)}
                       <div className={styles.productsGrid}>
-                        {msg.products.map((product) => (
+                        {sortProductsByRelevance(msg.products).map((product) => (
                           <ProductCard key={product.id} product={product} conversationId={conversationId} />
                         ))}
                       </div>

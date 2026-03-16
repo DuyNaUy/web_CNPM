@@ -5,7 +5,8 @@ import logging
 from typing import List, Dict, Optional
 import requests
 from django.conf import settings
-from django.db.models import Q
+from django.db import models
+from django.db.models import Q, Max
 from .models import ConversationSession
 from products.models import Product
 
@@ -204,7 +205,7 @@ QUAN TRỌNG: Mỗi khi bạn đề cập đến tên sản phẩm, hãy sử d�
         ai_response = result['choices'][0]['message']['content']
         
         # Trích xuất sản phẩm từ response và clean text
-        cleaned_response, products = self._extract_products_from_response(ai_response)
+        cleaned_response, products = self._extract_products_from_response(ai_response, user_message)
         
         return {
             'ai_response': cleaned_response,
@@ -243,7 +244,7 @@ Trợ lý:"""
             ai_response = response.text if response.text else "Không thể tạo phản hồi"
             
             # Trích xuất sản phẩm từ response và clean text
-            cleaned_response, products = self._extract_products_from_response(ai_response)
+            cleaned_response, products = self._extract_products_from_response(ai_response, user_message)
             
             return {
                 'ai_response': cleaned_response,
@@ -354,13 +355,20 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
             logger.error(f"Error extracting keywords: {str(e)}")
             return []
 
-    def _extract_products_from_response(self, ai_response: str) -> tuple:
+    def _extract_products_from_response(self, ai_response: str, user_message: str = None) -> tuple:
         """
         Trích xuất tên sản phẩm từ response của AI
-        Sử dụng cải tiến fuzzy matching
+        Sử dụng cải tiến fuzzy matching + intent-based filtering
         Trả về: (cleaned_response, products_list)
+        
+        Args:
+            ai_response: Response từ AI
+            user_message: Câu hỏi của khách hàng (tùy chọn)
+            
+        Returns:
+            Tuple: (cleaned_response, products_list)
         """
-        result = self.improve_product_extraction(ai_response)
+        result = self.improve_product_extraction(ai_response, user_message)
         
         # Format products cho return
         products = []
@@ -369,13 +377,24 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
             if prod_obj:
                 # Extract variants from product
                 variants = []
+                variant_prices = [int(prod_obj.price)]  # Bắt đầu với base price
+                
                 if prod_obj.variants.exists():
-                    variants = [{
-                        'id': v.id,
-                        'size': v.size,
-                        'price': int(v.price) if v.price else int(prod_obj.price),
-                        'stock': v.stock
-                    } for v in prod_obj.variants.all()]
+                    for v in prod_obj.variants.all():
+                        variant_price = int(v.price) if v.price else int(prod_obj.price)
+                        variants.append({
+                            'id': v.id,
+                            'size': v.size,
+                            'price': variant_price,
+                            'stock': v.stock
+                        })
+                        variant_prices.append(variant_price)
+                
+                # Tính min-max price từ base price + tất cả variant prices
+                price_range = {
+                    'min': min(variant_prices),
+                    'max': max(variant_prices)
+                }
                 
                 prod_data = {
                     'id': product['id'],
@@ -386,7 +405,8 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                     'image_url': self._get_product_image_url(prod_obj),
                     'unit': prod_obj.unit if hasattr(prod_obj, 'unit') else '',
                     'variants': variants,  # Add variants array
-                    'quantity': 1  # Default quantity
+                    'quantity': 1,  # Default quantity
+                    'price_range': price_range  # Min-max price range
                 }
                 products.append(prod_data)
         
@@ -475,7 +495,25 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                     for v in product.variants.all()
                 ]
             
-            # Lấy hình ảnh
+            # Lấy hình ảnh từ product_images
+            product_images = []
+            if product.product_images.exists():
+                for img in product.product_images.all():
+                    img_url = img.image_url
+                    if img.image and hasattr(img.image, 'url'):
+                        img_url = img.image.url
+                        if not img_url.startswith('http'):
+                            base_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+                            img_url = base_url.rstrip('/') + img_url
+                    product_images.append({
+                        'id': img.id,
+                        'image': img.image.url if img.image else '',
+                        'image_url': img_url,
+                        'is_main': img.is_main,
+                        'order': img.order
+                    })
+            
+            # Lấy hình ảnh từ images field (legacy)
             images = []
             try:
                 if product.images:
@@ -503,11 +541,20 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
             if product.old_price and product.price and product.old_price > product.price:
                 discount_percentage = int(((product.old_price - product.price) / product.old_price) * 100)
             
+            # Tính min-max price
+            min_price = int(product.price)
+            max_price = int(product.price)
+            if variants:
+                prices = [v['price'] for v in variants]
+                min_price = min(prices + [int(product.price)])
+                max_price = max(prices + [int(product.price)])
+            
             return {
                 'id': product.id,
                 'name': product.name,
                 'slug': product.slug,
                 'category': product.category.name if product.category else None,
+                'category_name': product.category.name if product.category else None,
                 'price': int(product.price),
                 'old_price': int(product.old_price) if product.old_price else None,
                 'discount_percentage': discount_percentage,
@@ -518,12 +565,16 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                 'sold_count': product.sold_count,
                 'description': product.description or '',
                 'detail_description': product.detail_description or '',
+                'main_image': product.main_image.url if product.main_image else None,
                 'main_image_url': main_image_url,
                 'images': images,
+                'product_images': product_images,
                 'specifications': specs,
                 'origin': product.origin or '',
                 'guarantee': product.guarantee or '',
                 'variants': variants,
+                'min_price': min_price,
+                'max_price': max_price,
                 'in_stock': product.stock > 0
             }
         except Product.DoesNotExist:
@@ -912,58 +963,169 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
             logger.error(f"Error getting products dict: {str(e)}")
             return {}
     
-    def improve_product_extraction(self, ai_response: str) -> Dict:
+    def _filter_products_by_intent(self, ai_response: str, user_message: str) -> List[Dict]:
+        """
+        Lọc sản phẩm dựa trên ý định của khách hàng từ câu hỏi
+        Ưu tiên sản phẩm bán chạy (sold_count cao) và phù hợp nhất
+        
+        Args:
+            ai_response: Response từ AI
+            user_message: Câu hỏi của khách hàng
+            
+        Returns:
+            Danh sách sản phẩm đã được lọc (tối thiểu 3, tối đa 5)
+        """
+        try:
+            from difflib import SequenceMatcher
+            
+            # Kết hợp response + user message để tìm sản phẩm
+            combined_text = f"{ai_response} {user_message}".lower()
+            
+            # Lấy tất cả sản phẩm active
+            all_products = Product.objects.filter(status='active').select_related('category')
+            
+            products_scored = []
+            
+            for product in all_products:
+                # Tính similarity score
+                if product.name.lower() in combined_text:
+                    similarity = 1.0
+                else:
+                    max_ratio = 0
+                    for word in combined_text.split():
+                        if len(word) > 2:  # Bỏ qua từ quá ngắn
+                            ratio = SequenceMatcher(None, word, product.name.lower()).ratio()
+                            max_ratio = max(max_ratio, ratio)
+                    similarity = max_ratio
+                
+                if similarity >= 0.5:  # Ngưỡng thấp hơn để bắt được nhiều sản phẩm
+                    # Tính tổng score: similarity + sold_count/total_products
+                    max_sold = Product.objects.aggregate(models.Max('sold_count'))['sold_count__max'] or 1
+                    sales_boost = (product.sold_count / max_sold) * 0.3  # Boost 30% dựa trên sales
+                    
+                    total_score = similarity + sales_boost
+                    
+                    products_scored.append({
+                        'id': product.id,
+                        'name': product.name,
+                        'price': int(product.price),
+                        'description': product.description or '',
+                        'stock': product.stock,
+                        'sold_count': product.sold_count,
+                        'rating': float(product.rating),
+                        'similarity': similarity,
+                        'total_score': total_score
+                    })
+            
+            # Sắp xếp theo total_score từ cao xuống thấp
+            products_scored = sorted(products_scored, key=lambda x: x['total_score'], reverse=True)
+            
+            # Lấy top products (tối thiểu 3, tối đa 5)
+            # Nếu có >= 3 sản phẩm, lấy tối thiểu 3; nếu không, lấy hết
+            min_products = min(3, len(products_scored))
+            products_to_return = products_scored[:5] if len(products_scored) >= 3 else products_scored
+            
+            # Nếu dưới 3 sản phẩm, thêm các sản phẩm bán chạy nhất
+            if len(products_to_return) < 3:
+                top_sellers = Product.objects.filter(status='active').order_by('-sold_count')[:3]
+                for seller in top_sellers:
+                    if not any(p['id'] == seller.id for p in products_to_return):
+                        products_to_return.append({
+                            'id': seller.id,
+                            'name': seller.name,
+                            'price': int(seller.price),
+                            'description': seller.description or '',
+                            'stock': seller.stock,
+                            'sold_count': seller.sold_count,
+                            'rating': float(seller.rating),
+                            'similarity': 0,  # Không match với intent
+                            'total_score': -1  # Fallback product
+                        })
+                        if len(products_to_return) >= 3:
+                            break
+            
+            return products_to_return[:5]
+            
+        except Exception as e:
+            logger.error(f"Error filtering products by intent: {str(e)}")
+            # Fallback: trả về top sellers
+            try:
+                top_sellers = Product.objects.filter(status='active').order_by('-sold_count')[:3]
+                return [{
+                    'id': p.id,
+                    'name': p.name,
+                    'price': int(p.price),
+                    'description': p.description or '',
+                    'stock': p.stock,
+                    'sold_count': p.sold_count,
+                    'rating': float(p.rating),
+                    'similarity': 0,
+                    'total_score': p.sold_count
+                } for p in top_sellers]
+            except:
+                return []
+
+    def improve_product_extraction(self, ai_response: str, user_message: str = None) -> Dict:
         """
         Cải tiến việc trích xuất sản phẩm từ response
-        Sử dụng fuzzy matching để tìm sản phẩm ngay cả khi tên không khớp hoàn toàn
+        Sử dụng fuzzy matching + intent-based filtering
+        Ưu tiên sản phẩm bán chạy (sold_count) - tối thiểu 3 sản phẩm
         
         Returns:
             {
                 'cleaned_response': str,  # Response đã được làm sạch
-                'products': List[Dict],   # Danh sách sản phẩm tìm được
+                'products': List[Dict],   # Danh sách sản phẩm tìm được (tối thiểu 3)
                 'confidence': float       # Độ tự tin trong việc tìm sản phẩm
             }
         """
         try:
             from difflib import SequenceMatcher
             
-            products = []
-            product_names = []
-            all_products = Product.objects.filter(status='active').values('id', 'name', 'price', 'description', 'stock')
+            # Nếu không có user_message, sử dụng ai_response
+            combined_text = f"{ai_response} {user_message or ''}".lower()
             
-            # Tìm sản phẩm có tên khớp hoặc gần giống
-            for product in all_products:
-                # Kiểm tra khớp chính xác
-                if product['name'].lower() in ai_response.lower():
-                    similarity = 1.0
-                else:
-                    # Kiểm tra khớp gần đúng với ratio >= 0.6
-                    max_ratio = 0
-                    for word in ai_response.lower().split():
-                        ratio = SequenceMatcher(None, word, product['name'].lower()).ratio()
-                        max_ratio = max(max_ratio, ratio)
-                    similarity = max_ratio
+            # Sử dụng intent-based filtering
+            if user_message:
+                products = self._filter_products_by_intent(ai_response, user_message)
+            else:
+                # Fallback: dùng phương thức cũ
+                products = []
+                product_names = []
+                all_products = Product.objects.filter(status='active').values('id', 'name', 'price', 'description', 'stock')
                 
-                if similarity >= 0.6:  # Ngưỡng khớp 60%
-                    product_data = {
-                        'id': product['id'],
-                        'name': product['name'],
-                        'price': int(product['price']),
-                        'description': product['description'] or '',
-                        'stock': product['stock'],
-                        'similarity': similarity
-                    }
-                    products.append(product_data)
-                    product_names.append(product['name'])
+                for product in all_products:
+                    if product['name'].lower() in ai_response.lower():
+                        similarity = 1.0
+                    else:
+                        max_ratio = 0
+                        for word in ai_response.lower().split():
+                            ratio = SequenceMatcher(None, word, product['name'].lower()).ratio()
+                            max_ratio = max(max_ratio, ratio)
+                        similarity = max_ratio
+                    
+                    if similarity >= 0.6:
+                        product_data = {
+                            'id': product['id'],
+                            'name': product['name'],
+                            'price': int(product['price']),
+                            'description': product['description'] or '',
+                            'stock': product['stock'],
+                            'similarity': similarity,
+                            'total_score': similarity
+                        }
+                        products.append(product_data)
+                        product_names.append(product['name'])
+                
+                products = sorted(products, key=lambda x: x['total_score'], reverse=True)[:5]
             
-            # Sort theo similarity từ cao xuống thấp
-            products = sorted(products, key=lambda x: x['similarity'], reverse=True)[:5]
+            # Extract product names để clean response
+            product_names = [p['name'] for p in products]
             
             # Tính confidence score (0-1)
-            if products:
-                avg_similarity = sum(p['similarity'] for p in products) / len(products)
+            if products and 'similarity' in products[0]:
+                avg_similarity = sum(p.get('similarity', 0) for p in products) / len(products) if products else 0
             else:
-                avg_similarity = 0
+                avg_similarity = 0.5 if products else 0
             
             # Clean response
             cleaned_response = self._clean_response_text(ai_response, product_names)

@@ -62,7 +62,7 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
     try {
         console.log(`API Request: ${config.method || 'GET'} ${API_BASE_URL}${endpoint}`);
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+        let response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
         // Try to parse JSON response
         let data;
@@ -74,6 +74,29 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
         }
 
         console.log(`API Response (${response.status}):`, data);
+
+        // If 401 and we have a token and this is a GET request, retry without token
+        if (response.status === 401 && token && (!config.method || config.method === 'GET')) {
+            console.warn('[API] Got 401 with token for GET request, retrying without token...');
+            // Remove authorization header and retry
+            const configWithoutAuth = {
+                ...config,
+                headers: {
+                    ...headers,
+                    Authorization: undefined
+                }
+            };
+            delete configWithoutAuth.headers['Authorization'];
+            
+            response = await fetch(`${API_BASE_URL}${endpoint}`, configWithoutAuth);
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                console.error('JSON Parse Error on retry:', parseError);
+                throw new Error(`Server returned invalid JSON on retry. Status: ${response.status}`);
+            }
+            console.log(`API Response after retry (${response.status}):`, data);
+        }
 
         // If response is not OK, but we have data structure from backend
         if (!response.ok) {

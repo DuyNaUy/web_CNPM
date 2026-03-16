@@ -633,6 +633,7 @@
   align-items: center;
   gap: 12px;
   padding: 8px;
+  position: relative;
 }
 
 .productCard:hover {

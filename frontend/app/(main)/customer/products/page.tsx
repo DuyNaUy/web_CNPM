@@ -15,10 +15,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { classNames } from 'primereact/utils';
 import { productAPI, categoryAPI, cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
-import { 
-  addItemToLocalCart, 
-  getLocalCartTotalQuantity, 
-  removeItemFromLocalCart 
+import {
+    addItemToLocalCart,
+    getLocalCartTotalQuantity,
+    removeItemFromLocalCart
 } from '@/services/localCart';
 
 interface Category {
@@ -89,7 +89,7 @@ const ProductsPage = () => {
     // Load tất cả dữ liệu một lần khi component mount
     useEffect(() => {
         loadAllData();
-        
+
         // Kiểm tra URL query params để lấy category
         const categoryParam = searchParams.get('category');
         if (categoryParam) {
@@ -194,7 +194,7 @@ const ProductsPage = () => {
 
     const addToCart = async (product: Product) => {
         const selectedSize = selectedSizes[product.id];
-        
+
         // Nếu có variants, bắt buộc phải chọn size
         if (product.variants && product.variants.length > 0 && !selectedSize) {
             toast.current?.show({
@@ -206,10 +206,10 @@ const ProductsPage = () => {
             return;
         }
 
-        const sizeStr = product.variants && product.variants.length > 0 
-            ? `${selectedSize}` 
+        const sizeStr = product.variants && product.variants.length > 0
+            ? `${selectedSize}`
             : `${selectedSize ?? 30}cm`;
-        
+
         // Lấy giá dựa trên size
         let itemPrice = product.price;
         if (selectedSize && product.variants && product.variants.length > 0) {
@@ -221,7 +221,7 @@ const ProductsPage = () => {
 
         try {
             const user = getStoredUser();
-            
+
             if (user) {
                 // User đã đăng nhập - gọi API backend
                 const response = await cartAPI.addItem(product.id, 1, sizeStr);
@@ -259,17 +259,17 @@ const ProductsPage = () => {
                     sizeStr,
                     product.main_image_url || product.main_image || ''
                 );
-                
+
                 // Update cart count từ localStorage
                 const newTotal = getLocalCartTotalQuantity();
                 setCartCount(newTotal);
-                
+
                 // Update local cart state
                 setCart((prev) => ({
                     ...prev,
                     [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size: selectedSize ?? 30 }
                 }));
-                
+
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Đã thêm vào giỏ',
@@ -290,7 +290,7 @@ const ProductsPage = () => {
 
     const buyNow = (product: Product) => {
         const selectedSize = selectedSizes[product.id];
-        
+
         // Nếu có variants, bắt buộc phải chọn size
         if (product.variants && product.variants.length > 0 && !selectedSize) {
             toast.current?.show({
@@ -305,12 +305,12 @@ const ProductsPage = () => {
         // Xử lý size và price dựa trên variants
         let size: string;
         let price = product.price;
-        
+
         if (product.variants && product.variants.length > 0) {
             // Product có variants - lấy thông tin từ variant đã chọn
             const selectedSizeStr = `${selectedSize}`;
             const variant = product.variants.find(v => v.size === selectedSizeStr);
-            
+
             if (variant) {
                 size = variant.size;
                 price = variant.price;
@@ -332,7 +332,7 @@ const ProductsPage = () => {
             size: size,
             image: product.main_image_url || product.main_image
         };
-        
+
         console.log('Buy Now - Item:', item);
         sessionStorage.setItem('buyNowItem', JSON.stringify(item));
         window.location.href = '/customer/checkout';
@@ -373,17 +373,17 @@ const ProductsPage = () => {
                                     const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
                                         ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
                                         : product.variants && product.variants.length > 0
-                                        ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                        : product.stock;
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                            : product.stock;
                                     return stock <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold';
                                 })()}>
                                     {(() => {
                                         const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
                                             ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
                                             : product.variants && product.variants.length > 0
-                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                            : product.stock;
-                                        
+                                                ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                                : product.stock;
+
                                         if (stock <= 0) {
                                             return 'Hết hàng';
                                         }
@@ -396,8 +396,8 @@ const ProductsPage = () => {
                                 <div className="flex gap-3">
                                     {product.variants && product.variants.length > 0 ? (
                                         product.variants.map((variant) => (
-                                            <label 
-                                                key={variant.size} 
+                                            <label
+                                                key={variant.size}
                                                 className="flex align-items-center gap-2"
                                                 style={{
                                                     opacity: variant.stock === 0 ? 0.4 : 1,
@@ -443,23 +443,23 @@ const ProductsPage = () => {
                                             const selectedVariant = product.variants.find(v => v.size === `${selectedSizes[product.id]}`);
                                             return `${new Intl.NumberFormat('vi-VN').format(selectedVariant?.price ?? 0)} VND`;
                                         }
-                                        
+
                                         // Nếu có variants, kiểm tra xem có bao nhiêu giá khác nhau
                                         if (product.variants && product.variants.length > 0) {
                                             const prices = product.variants.map(v => v.price).filter(p => p > 0);
                                             const uniquePrices = Array.from(new Set(prices));
-                                            
+
                                             // Nếu chỉ có 1 giá duy nhất, hiển thị giá đó
                                             if (uniquePrices.length === 1) {
                                                 return `${new Intl.NumberFormat('vi-VN').format(uniquePrices[0])} VND`;
                                             }
-                                            
+
                                             // Nếu có 2 giá trở lên, hiển thị min - max
                                             if (uniquePrices.length >= 2 && product.min_price && product.max_price) {
                                                 return `${new Intl.NumberFormat('vi-VN').format(product.min_price)} - ${new Intl.NumberFormat('vi-VN').format(product.max_price)} VND`;
                                             }
                                         }
-                                        
+
                                         // Fallback về giá mặc định
                                         return `${new Intl.NumberFormat('vi-VN').format(product.price)} VND`;
                                     })()}
@@ -468,38 +468,38 @@ const ProductsPage = () => {
                             </div>
                         </div>
 
-                            <div className="flex gap-2">
+                        <div className="flex gap-2">
                             <Button label="Chi tiết" icon="pi pi-eye" className="flex-1 p-button-outlined" onClick={() => router.push(`/customer/products/${product.id}`)} />
-                            <Button 
-                                label="Mua Ngay" 
-                                icon="pi pi-flash" 
+                            <Button
+                                label="Mua Ngay"
+                                icon="pi pi-flash"
                                 className="flex-1"
                                 onClick={() => buyNow(product)}
                                 disabled={(() => {
                                     const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
                                         ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
                                         : product.variants && product.variants.length > 0
-                                        ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                        : product.stock;
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                            : product.stock;
                                     return stock <= 0;
                                 })()}
                                 style={{ backgroundColor: '#ff1493', borderColor: '#ff1493', color: 'white', cursor: 'pointer', opacity: 1 }}
                             />
-                            <Button 
-                                icon="pi pi-shopping-cart" 
-                                className="p-button-rounded" 
-                                onClick={() => addToCart(product)} 
-                                tooltip="Thêm vào giỏ" 
-                                tooltipOptions={{ position: 'top' }} 
+                            <Button
+                                icon="pi pi-shopping-cart"
+                                className="p-button-rounded"
+                                onClick={() => addToCart(product)}
+                                tooltip="Thêm vào giỏ"
+                                tooltipOptions={{ position: 'top' }}
                                 disabled={(() => {
                                     const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
                                         ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
                                         : product.variants && product.variants.length > 0
-                                        ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                        : product.stock;
+                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                                            : product.stock;
                                     return stock <= 0;
                                 })()}
-                                style={{ cursor: 'pointer', opacity: 1 }} 
+                                style={{ cursor: 'pointer', opacity: 1 }}
                             />
                         </div>
 

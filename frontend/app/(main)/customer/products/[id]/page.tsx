@@ -63,10 +63,32 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
         const load = async () => {
             setLoading(true);
             try {
-                const resp = await productAPI.getById(Number(params.id));
-                console.log('Product API Response:', resp);
-                const p = resp && resp.data ? resp.data : resp;
-                console.log('Normalized data:', p);
+                let p: any = null;
+                
+                // Kiểm tra xem có dữ liệu từ chatbot (sessionStorage) không
+                const sessionData = sessionStorage.getItem('productData');
+                if (sessionData) {
+                    try {
+                        p = JSON.parse(sessionData);
+                        console.log('[ProductDetail] Using data from chatbot sessionStorage:', p);
+                        // Xóa sessionStorage sau khi sử dụng
+                        sessionStorage.removeItem('productData');
+                    } catch (e) {
+                        console.error('Failed to parse session data:', e);
+                        p = null;
+                    }
+                }
+                
+                // Nếu không có session data, gọi API backend
+                if (!p) {
+                    console.log('[ProductDetail] No session data, fetching from API...');
+                    const resp = await productAPI.getById(Number(params.id));
+                    console.log('[ProductDetail] Product API Response:', resp);
+                    p = resp && resp.data ? resp.data : resp;
+                    console.log('[ProductDetail] Normalized data from API:', p);
+                } else {
+                    console.log('[ProductDetail] Using session data (chatbot):', p);
+                }
                 
                 // Build image URLs array: main_image first, then product_images
                 let imageUrls: string[] = [];
@@ -74,10 +96,12 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                 // Always add main_image_url first if it exists
                 if (p.main_image_url) {
                     imageUrls.push(p.main_image_url);
+                    console.log('[ProductDetail] Added main_image_url:', p.main_image_url);
                 }
                 
                 // Then add product_images (additional images)
                 if (p.product_images && Array.isArray(p.product_images) && p.product_images.length > 0) {
+                    console.log('[ProductDetail] Product images count:', p.product_images.length);
                     const additionalImages = p.product_images.map((img: any) => img.image_url);
                     imageUrls = [...imageUrls, ...additionalImages];
                 }
@@ -85,12 +109,13 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                 // Final fallback to placeholder if no images at all
                 if (imageUrls.length === 0) {
                     imageUrls = ['/demo/images/product/placeholder.png'];
+                    console.log('[ProductDetail] Using placeholder image');
                 }
                 
                 const normalized: Product = {
                     id: Number(p.id),
                     name: p.name || p.title || '',
-                    category: p.category_name || (p.category && p.category.name) || '',
+                    category: p.category_name || p.category || (p.category && p.category.name) || '',
                     price: Number(p.price || 0),
                     oldPrice: p.old_price || p.oldPrice,
                     stock: Number(p.stock || p.quantity || 0),
@@ -104,7 +129,7 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                     unit: p.unit || '30cm',
                     product_images: p.product_images || []
                 };
-                console.log('Normalized Product:', normalized);
+                console.log('[ProductDetail] Final normalized product:', normalized);
                 setProduct(normalized);
             } catch (err) {
                 console.error('Failed to load product', err);
