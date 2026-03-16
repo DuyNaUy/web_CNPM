@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 class CartViewSet(viewsets.ViewSet):
     """ViewSet cho giỏ hàng"""
-    authentication_classes = []  # Disable JWT authentication to allow anonymous users
     
     def get_permissions(self):
         """Cho phép anonymous users xem giỏ hàng, nhưng chỉ authenticated users mới được thay đổi"""

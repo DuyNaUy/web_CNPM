@@ -4,7 +4,16 @@ import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Toast } from 'primereact/toast';
+import { productAPI } from '@/services/api';
 import styles from './ProductRecommendationCard.module.css';
+import SizeSelectionModal from './SizeSelectionModal';
+
+interface ProductVariant {
+  id?: number;
+  size: string;
+  price: number;
+  stock: number;
+}
 
 interface Recommendation {
   product_id: number;
@@ -44,6 +53,10 @@ export default function ProductRecommendationCard({
   const [isHovering, setIsHovering] = useState(false);
   const [isImageHovering, setIsImageHovering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalActionType, setModalActionType] = useState<'add-to-cart' | 'buy-now' | null>(null);
+  const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
+  const [loadingVariants, setLoadingVariants] = useState(false);
   const router = useRouter();
   const toastRef = useRef<Toast>(null);
 
@@ -58,38 +71,12 @@ export default function ProductRecommendationCard({
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsLoading(true);
-    
-    try {
-      if (onAddToCart) {
-        await onAddToCart(recommendation);
-      }
-      toastRef.current?.show({
-        severity: 'success',
-        summary: 'Thành công',
-        detail: `"${recommendation.product_name}" đã được thêm vào giỏ hàng`,
-        life: 2000,
-      });
-    } catch (error) {
-      toastRef.current?.show({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: 'Không thể thêm vào giỏ hàng',
-        life: 2000,
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    await openModal('add-to-cart');
   };
 
   const handleBuyNow = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onBuyNow) {
-      onBuyNow(recommendation);
-    } else {
-      const slug = recommendation.slug || recommendation.product_id;
-      router.push(`/customer/products/${slug}`);
-    }
+    openModal('buy-now');
   };
 
   const discount = (recommendation.old_price && recommendation.price)
@@ -109,11 +96,112 @@ export default function ProductRecommendationCard({
     return stars;
   };
 
+  // Fetch product variants
+  const fetchProductVariants = async () => {
+    try {
+      setLoadingVariants(true);
+      const response = await productAPI.getById(recommendation.product_id);
+      const productData = response.data || response;
+      
+      if (productData.variants && Array.isArray(productData.variants) && productData.variants.length > 0) {
+        setProductVariants(productData.variants);
+        return productData.variants;
+      } else {
+        // No variants - use default size
+        const defaultVariant: ProductVariant = {
+          size: recommendation.size || 'Default',
+          price: recommendation.price || 0,
+          stock: recommendation.stock || 0
+        };
+        setProductVariants([defaultVariant]);
+        return [defaultVariant];
+      }
+    } catch (error) {
+      console.error('Failed to fetch product variants:', error);
+      toastRef.current?.show({
+        severity: 'error',
+        summary: 'Lỗi',
+        detail: 'Không thể tải thông tin sản phẩm',
+        life: 2000,
+      });
+      return [];
+    } finally {
+      setLoadingVariants(false);
+    }
+  };
+
+  // Open modal with action type
+  const openModal = async (actionType: 'add-to-cart' | 'buy-now') => {
+    setModalActionType(actionType);
+    const variants = await fetchProductVariants();
+    if (variants.length > 0) {
+      setIsModalOpen(true);
+    }
+  };
+
+  // Handle modal close
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setModalActionType(null);
+  };
+
+  // Handle modal confirmation
+  const handleModalConfirm = async (selectedSize: string, quantity: number) => {
+    try {
+      if (modalActionType === 'add-to-cart') {
+        if (onAddToCart) {
+          await onAddToCart(recommendation);
+        }
+        toastRef.current?.show({
+          severity: 'success',
+          summary: 'Thành công',
+          detail: `"${recommendation.product_name}" (${selectedSize}) x${quantity} đã được thêm vào giỏ hàng`,
+          life: 2000,
+        });
+      } else if (modalActionType === 'buy-now') {
+        if (onBuyNow) {
+          await onBuyNow(recommendation);
+        } else {
+          // Store item info and redirect to checkout
+          const selectedVariant = productVariants.find(v => v.size === selectedSize);
+          const itemPrice = selectedVariant?.price || recommendation.price || 0;
+          const item = {
+            id: recommendation.product_id,
+            name: recommendation.product_name,
+            price: itemPrice,
+            quantity: quantity,
+            unit: selectedSize,
+            size: selectedSize,
+            image: recommendation.image_url
+          };
+          sessionStorage.setItem('buyNowItem', JSON.stringify(item));
+          router.push('/customer/checkout');
+        }
+      }
+      handleModalClose();
+    } catch (error) {
+      toastRef.current?.show({
+        severity: 'error',
+        summary: 'Lỗi',
+        detail: 'Có lỗi xảy ra',
+        life: 2000,
+      });
+    }
+  };
+
   // Compact horizontal mode - for chat display
   if (compact) {
     return (
       <>
         <Toast ref={toastRef} position="bottom-right" />
+        <SizeSelectionModal
+          isOpen={isModalOpen}
+          product={recommendation}
+          variants={productVariants}
+          onActionType={modalActionType}
+          onConfirm={handleModalConfirm}
+          onClose={handleModalClose}
+        />
         <div 
           className={`${styles.card} ${styles.compact}`}
           onMouseEnter={() => setIsHovering(true)}
@@ -227,6 +315,14 @@ export default function ProductRecommendationCard({
     return (
       <>
         <Toast ref={toastRef} position="bottom-right" />
+        <SizeSelectionModal
+          isOpen={isModalOpen}
+          product={recommendation}
+          variants={productVariants}
+          onActionType={modalActionType}
+          onConfirm={handleModalConfirm}
+          onClose={handleModalClose}
+        />
         <div 
           className={`${styles.card} ${styles.uiOnly}`}
           onMouseEnter={() => setIsHovering(true)}
@@ -349,6 +445,14 @@ export default function ProductRecommendationCard({
   return (
     <>
       <Toast ref={toastRef} position="bottom-right" />
+      <SizeSelectionModal
+        isOpen={isModalOpen}
+        product={recommendation}
+        variants={productVariants}
+        onActionType={modalActionType}
+        onConfirm={handleModalConfirm}
+        onClose={handleModalClose}
+      />
       <div 
         className={`${styles.card} ${isHovering ? styles.hovered : ''}`}
         onMouseEnter={() => setIsHovering(true)}

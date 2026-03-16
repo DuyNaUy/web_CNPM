@@ -25,8 +25,10 @@ export const removeAuthTokens = () => {
 // Helper function to get stored user
 export const getStoredUser = () => {
     if (typeof window !== 'undefined') {
+        // Only return user if both user data AND token exist
         const userStr = localStorage.getItem('user');
-        return userStr ? JSON.parse(userStr) : null;
+        const token = localStorage.getItem('access_token');
+        return (userStr && token) ? JSON.parse(userStr) : null;
     }
     return null;
 };

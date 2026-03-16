@@ -280,12 +280,24 @@ Trợ lý:"""
                 try:
                     top_products = Product.objects.filter(status='active').order_by('-sold_count')[:5]
                     for product in top_products:
+                        # Extract variants for each product
+                        variants = []
+                        if product.variants.exists():
+                            variants = [{
+                                'id': v.id,
+                                'size': v.size,
+                                'price': int(v.price) if v.price else int(product.price),
+                                'stock': v.stock
+                            } for v in product.variants.all()]
+                        
                         products_data.append({
                             'id': product.id,
                             'name': product.name,
                             'price': int(product.price),
                             'stock': product.stock,
                             'image_url': self._get_product_image_url(product),
+                            'unit': product.unit if hasattr(product, 'unit') else '',
+                            'variants': variants,
                             'quantity': 1
                         })
                 except Exception as e:
@@ -355,6 +367,16 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
         for product in result['products']:
             prod_obj = Product.objects.filter(id=product['id']).first()
             if prod_obj:
+                # Extract variants from product
+                variants = []
+                if prod_obj.variants.exists():
+                    variants = [{
+                        'id': v.id,
+                        'size': v.size,
+                        'price': int(v.price) if v.price else int(prod_obj.price),
+                        'stock': v.stock
+                    } for v in prod_obj.variants.all()]
+                
                 prod_data = {
                     'id': product['id'],
                     'name': product['name'],
@@ -362,6 +384,8 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                     'description': product['description'],
                     'stock': product['stock'],
                     'image_url': self._get_product_image_url(prod_obj),
+                    'unit': prod_obj.unit if hasattr(prod_obj, 'unit') else '',
+                    'variants': variants,  # Add variants array
                     'quantity': 1  # Default quantity
                 }
                 products.append(prod_data)
@@ -708,6 +732,19 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
             
             result = []
             for product in products:
+                # Get variants if exist
+                variants = []
+                if product.variants.exists():
+                    variants = [
+                        {
+                            'id': v.id,
+                            'size': v.size,
+                            'price': int(v.price) if v.price else int(product.price),
+                            'stock': v.stock
+                        }
+                        for v in product.variants.all()
+                    ]
+                
                 result.append({
                     'id': product.id,
                     'name': product.name,
@@ -716,7 +753,8 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                     'description': product.description or '',
                     'rating': float(product.rating),
                     'stock': product.stock,
-                    'image_url': self._get_product_image_url(product)
+                    'image_url': self._get_product_image_url(product),
+                    'variants': variants
                 })
             
             return result
@@ -743,6 +781,19 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
             
             result = []
             for product in products:
+                # Get variants if exist
+                variants = []
+                if product.variants.exists():
+                    variants = [
+                        {
+                            'id': v.id,
+                            'size': v.size,
+                            'price': int(v.price) if v.price else int(product.price),
+                            'stock': v.stock
+                        }
+                        for v in product.variants.all()
+                    ]
+                
                 result.append({
                     'id': product.id,
                     'name': product.name,
@@ -751,7 +802,8 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                     'description': product.description or '',
                     'rating': float(product.rating),
                     'stock': product.stock,
-                    'image_url': self._get_product_image_url(product)
+                    'image_url': self._get_product_image_url(product),
+                    'variants': variants
                 })
             
             return result
@@ -794,6 +846,19 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
             
             result = []
             for product in products:
+                # Get variants if exist
+                variants = []
+                if product.variants.exists():
+                    variants = [
+                        {
+                            'id': v.id,
+                            'size': v.size,
+                            'price': int(v.price) if v.price else int(product.price),
+                            'stock': v.stock
+                        }
+                        for v in product.variants.all()
+                    ]
+                
                 result.append({
                     'id': product.id,
                     'name': product.name,
@@ -802,7 +867,8 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                     'sold_count': product.sold_count,
                     'rating': float(product.rating),
                     'image_url': self._get_product_image_url(product),
-                    'quantity': 1  # Default quantity for recommendations
+                    'quantity': 1,  # Default quantity for recommendations
+                    'variants': variants
                 })
             
             return result
