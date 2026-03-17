@@ -11,6 +11,16 @@ class MoMoPayment:
     """
     Xử lý thanh toán qua MoMo
     Tài liệu: https://developers.momo.vn/
+    
+    ⚠️ IMPORTANT - SANDBOX LIMITATIONS:
+    - Sandbox chỉ hỗ trợ: QR Code Scanning, MoMo Wallet
+    - KHÔNG hỗ trợ: ATM Card Payment trên sandbox
+    - Để test card payment, cần dùng PRODUCTION account
+    
+    Cách tự test ATM trên sandbox:
+    1. Quét QR code bằng Momo App
+    2. Chọn "Quét mã QR" → Thành công
+    3. Hoặc dùng Production credentials để test card
     """
     
     # MoMo Sandbox credentials

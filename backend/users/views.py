@@ -139,6 +139,32 @@ class UserLogoutView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
+class TokenRefreshView(APIView):
+    """API endpoint for refreshing access token"""
+    permission_classes = [AllowAny]
+    authentication_classes = []  # Không yêu cầu authentication
+    
+    def post(self, request):
+        try:
+            refresh_token = request.data.get("refresh")
+            if not refresh_token:
+                return Response({
+                    'success': False,
+                    'message': 'Refresh token is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            token = RefreshToken(refresh_token)
+            return Response({
+                'access': str(token.access_token)
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'message': 'Token refresh failed'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+
 class UserProfileView(generics.RetrieveUpdateAPIView):
     """API endpoint for user profile"""
     permission_classes = [IsAuthenticated]
