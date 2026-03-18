@@ -1,10 +1,12 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Toast } from 'primereact/toast';
-import { productAPI } from '@/services/api';
+import { productAPI, cartAPI, getStoredUser } from '@/services/api';
+import { addItemToLocalCart, getLocalCartTotalQuantity } from '@/services/localCart';
+import { LayoutContext } from '@/layout/context/layoutcontext';
 import styles from './ProductRecommendationCard.module.css';
 import SizeSelectionModal from './SizeSelectionModal';
 
@@ -59,6 +61,7 @@ export default function ProductRecommendationCard({
   const [loadingVariants, setLoadingVariants] = useState(false);
   const router = useRouter();
   const toastRef = useRef<Toast>(null);
+  const { setCartCount } = useContext(LayoutContext);
 
   const handleViewMore = () => {
     if (onViewMore) {
@@ -149,15 +152,68 @@ export default function ProductRecommendationCard({
   const handleModalConfirm = async (selectedSize: string, quantity: number) => {
     try {
       if (modalActionType === 'add-to-cart') {
-        if (onAddToCart) {
-          await onAddToCart(recommendation);
+        setIsLoading(true);
+        const user = getStoredUser();
+        const selectedVariant = productVariants.find(v => v.size === selectedSize);
+        const itemPrice = selectedVariant?.price || recommendation.price || 0;
+        const sizeStr = selectedSize || 'Default';
+        
+        if (user) {
+          // User đã đăng nhập - call API backend
+          const response = await cartAPI.addItem(recommendation.product_id, quantity, sizeStr);
+          
+          if (response?.error) {
+            toastRef.current?.show({
+              severity: 'error',
+              summary: 'Lỗi',
+              detail: response.error
+            });
+            return;
+          }
+          
+          if (response && response.id) {
+            // Update cart count in top bar
+            if (response.total_quantity) {
+              setCartCount(response.total_quantity);
+            }
+            toastRef.current?.show({
+              severity: 'success',
+              summary: 'Thành công',
+              detail: `"${recommendation.product_name}" (${sizeStr}) x${quantity} đã được thêm vào giỏ hàng`,
+              life: 2000,
+            });
+            // Call parent callback if provided
+            if (onAddToCart) {
+              await onAddToCart(recommendation);
+            }
+          }
+        } else {
+          // User chưa đăng nhập - lưu vào localStorage
+          addItemToLocalCart(
+            recommendation.product_id,
+            recommendation.product_name,
+            itemPrice,
+            quantity,
+            sizeStr,
+            recommendation.image_url || ''
+          );
+          
+          // Update cart count from localStorage
+          const newTotal = getLocalCartTotalQuantity();
+          setCartCount(newTotal);
+          
+          toastRef.current?.show({
+            severity: 'success',
+            summary: 'Thành công',
+            detail: `"${recommendation.product_name}" (${sizeStr}) x${quantity} đã được thêm vào giỏ hàng`,
+            life: 2000,
+          });
+          // Call parent callback if provided
+          if (onAddToCart) {
+            await onAddToCart(recommendation);
+          }
         }
-        toastRef.current?.show({
-          severity: 'success',
-          summary: 'Thành công',
-          detail: `"${recommendation.product_name}" (${selectedSize}) x${quantity} đã được thêm vào giỏ hàng`,
-          life: 2000,
-        });
+        setIsLoading(false);
       } else if (modalActionType === 'buy-now') {
         if (onBuyNow) {
           await onBuyNow(recommendation);
@@ -180,6 +236,7 @@ export default function ProductRecommendationCard({
       }
       handleModalClose();
     } catch (error) {
+      setIsLoading(false);
       toastRef.current?.show({
         severity: 'error',
         summary: 'Lỗi',

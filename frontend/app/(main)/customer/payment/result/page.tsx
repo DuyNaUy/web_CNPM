@@ -7,6 +7,7 @@ import React, { useEffect, useState, useContext } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { orderAPI, cartAPI } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
+import { clearLocalCart } from '@/services/localCart';
 
 const PaymentResultPage = () => {
     const router = useRouter();
@@ -51,10 +52,14 @@ const PaymentResultPage = () => {
 
                     // Xóa items khỏi giỏ hàng nếu đơn hàng được tạo từ cart
                     try {
-                        const momoCartItemIds = sessionStorage.getItem('momoCartItemIds');
+                        // Clear localStorage cart
+                        clearLocalCart();
+                        
+                        // Check localStorage for cartItemIds (MoMo cart items)
+                        const momoCartItemIds = localStorage.getItem('momoCartItemIds');
                         if (momoCartItemIds) {
                             const itemIds = JSON.parse(momoCartItemIds);
-                            // Xóa từng item khỏi cart
+                            // Xóa từng item khỏi cart API
                             for (const itemId of itemIds) {
                                 try {
                                     await cartAPI.removeItem(itemId);
@@ -62,20 +67,37 @@ const PaymentResultPage = () => {
                                     console.error('Error removing item from cart:', err);
                                 }
                             }
-                            // Cập nhật số lượng giỏ hàng
-                            try {
-                                const cartResponse = await cartAPI.getCart();
-                                if (cartResponse && cartResponse.items) {
-                                    setCartCount(cartResponse.items.length);
-                                } else {
-                                    setCartCount(0);
+                            // Xóa dữ liệu đã lưu
+                            localStorage.removeItem('momoCartItemIds');
+                        }
+                        
+                        // Also check sessionStorage for backward compatibility
+                        const sessionMomoCartItemIds = sessionStorage.getItem('momoCartItemIds');
+                        if (sessionMomoCartItemIds) {
+                            const itemIds = JSON.parse(sessionMomoCartItemIds);
+                            // Xóa từng item khỏi cart API
+                            for (const itemId of itemIds) {
+                                try {
+                                    await cartAPI.removeItem(itemId);
+                                } catch (err) {
+                                    console.error('Error removing item from cart:', err);
                                 }
-                            } catch (err) {
-                                console.error('Error updating cart count:', err);
-                                setCartCount(0);
                             }
                             // Xóa dữ liệu đã lưu
                             sessionStorage.removeItem('momoCartItemIds');
+                        }
+                        
+                        // Cập nhật số lượng giỏ hàng
+                        try {
+                            const cartResponse = await cartAPI.getCart();
+                            if (cartResponse && cartResponse.items) {
+                                setCartCount(cartResponse.items.length);
+                            } else {
+                                setCartCount(0);
+                            }
+                        } catch (err) {
+                            console.error('Error updating cart count:', err);
+                            setCartCount(0);
                         }
                     } catch (error) {
                         console.error('Error clearing cart items:', error);

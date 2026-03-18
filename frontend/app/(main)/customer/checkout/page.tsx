@@ -10,6 +10,7 @@ import React, { useRef, useState, useEffect, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import { orderAPI, getStoredUser, cartAPI } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
+import { clearLocalCart } from '@/services/localCart';
 
 interface CartItem {
     id: number;
@@ -184,16 +185,35 @@ const CheckoutPage = () => {
             if (response && response.id) {
                 // Kiểm tra nếu là thanh toán MoMo
                 if (paymentMethod === 'momo' && response.payUrl) {
-                    // Lưu selectedItemIds vào sessionStorage để xóa sau khi thanh toán thành công
+                    // Clear localStorage cart immediately
+                    clearLocalCart();
+                    
+                    // Lưu selectedItemIds vào localStorage để xóa sau khi thanh toán thành công
                     if (selectedItemIds.length > 0) {
-                        sessionStorage.setItem('momoCartItemIds', JSON.stringify(selectedItemIds));
+                        localStorage.setItem('momoCartItemIds', JSON.stringify(selectedItemIds));
                     }
+                    
+                    // Delete items from API cart if user is logged in
+                    if (selectedItemIds.length > 0) {
+                        for (const itemId of selectedItemIds) {
+                            try {
+                                await cartAPI.removeItem(itemId);
+                            } catch (err) {
+                                console.error('Error removing item from cart:', err);
+                            }
+                        }
+                    }
+                    
+                    // Update cart count to 0
+                    setCartCount(0);
+                    
                     // Redirect đến trang thanh toán MoMo
                     window.location.href = response.payUrl;
                     return;
                 }
                 
-                // Delete items from cart if they came from cart page
+                // Delete items from cart if they came from cart page (for COD payment)
+                clearLocalCart();
                 if (selectedItemIds.length > 0) {
                     for (const itemId of selectedItemIds) {
                         try {

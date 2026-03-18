@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Toast } from 'primereact/toast';
@@ -9,6 +9,7 @@ import { InputNumber } from 'primereact/inputnumber';
 import { Button } from 'primereact/button';
 import { cartAPI, getStoredUser } from '@/services/api';
 import { addItemToLocalCart, getLocalCartTotalQuantity } from '@/services/localCart';
+import { LayoutContext } from '@/layout/context/layoutcontext';
 import styles from './AIAgentChat.module.css';
 
 interface Message {
@@ -83,6 +84,7 @@ interface AIAgentChatProps {
 // Product Card Component
 function ProductCard({ product, conversationId }: { product: Product; conversationId: string }) {
   const router = useRouter();
+  const { setCartCount } = useContext(LayoutContext);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
@@ -338,6 +340,10 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
           
           // Check if response has cart data (success)
           if (response && response.id) {
+            // Update cart count in top bar
+            if (response.total_quantity) {
+              setCartCount(response.total_quantity);
+            }
             toastRef.current?.show({
               severity: 'success',
               summary: 'Đã thêm vào giỏ',
@@ -370,6 +376,10 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
           sizeStr,
           product.image_url || ''
         );
+        
+        // Update cart count from localStorage
+        const newTotal = getLocalCartTotalQuantity();
+        setCartCount(newTotal);
         
         toastRef.current?.show({
           severity: 'success',
