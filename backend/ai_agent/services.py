@@ -1142,3 +1142,115 @@ Bạn có muốn xem chi tiết hoặc thêm vào giỏ hàng không?"""
                 'products': [],
                 'confidence': 0
             }
+    
+    # ============== CHROMADB INTEGRATION ==============
+    
+    def search_products_with_chroma(
+        self, 
+        query: str, 
+        top_k: int = 5,
+        score_threshold: float = 0.3
+    ) -> List[Dict]:
+        """
+        Tìm kiếm sản phẩm sử dụng ChromaDB (Semantic Search)
+        
+        ChromaDB sử dụng "embeddings" - vector hóa sản phẩm
+        để tìm kiếm dựa trên ý nghĩa (semantic), không chỉ keyword.
+        
+        Ví dụ:
+        - Query: "Gấu bông hồng cho bé"
+        - ChromaDB sẽ tìm: Gấu hồng, Gấu hồng cao cấp, v.v.
+        - (Không cần query chứa chính xác cái tên)
+        
+        Args:
+            query: Text tìm kiếm (ví dụ: "Gấu bông mềm mại")
+            top_k: Số sản phẩm trả về tối đa
+            score_threshold: Ngưỡng điểm similarity (0-1)
+        
+        Returns:
+            List[Dict]: Danh sách sản phẩm được xếp hạng
+        """
+        try:
+            from .chroma_service import ChromaDBService
+            
+            # Khởi tạo ChromaDB service
+            chroma_service = ChromaDBService()
+            
+            # Tìm kiếm sản phẩm tương tự
+            similar_products = chroma_service.search_similar_products(
+                query=query,
+                top_k=top_k,
+                score_threshold=score_threshold
+            )
+            
+            # Định dạng kết quả
+            result = []
+            for item in similar_products:
+                product = item['product']
+                similarity_score = item['similarity_score']
+                
+                # Get variants if exist
+                variants = []
+                if product.variants.exists():
+                    variants = [
+                        {
+                            'id': v.id,
+                            'size': v.size,
+                            'price': int(v.price) if v.price else int(product.price),
+                            'stock': v.stock
+                        }
+                        for v in product.variants.all()
+                    ]
+                
+                result.append({
+                    'id': product.id,
+                    'name': product.name,
+                    'price': int(product.price),
+                    'category': product.category.name if product.category else None,
+                    'description': product.description or '',
+                    'rating': float(product.rating),
+                    'stock': product.stock,
+                    'image_url': self._get_product_image_url(product),
+                    'variants': variants,
+                    'chroma_similarity_score': similarity_score  # ChromaDB score
+                })
+            
+            logger.info(f"🔍 ChromaDB found {len(result)} products for query: {query}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error with ChromaDB search: {str(e)}")
+            # Fallback to keyword search
+            logger.warning("Falling back to keyword search...")
+            return self.search_products_by_keyword(query, limit=top_k)
+    
+    def create_chroma_embeddings(self, force_refresh: bool = False) -> Dict:
+        """
+        Khởi tạo ChromaDB embeddings cho tất cả sản phẩm
+        
+        Gọi hàm này một lần để tạo vector cho sản phẩm.
+        Sau đó ChromaDB sẽ lưu lâu dài không cần gọi lại.
+        
+        Args:
+            force_refresh: Nếu True, xóa embeddings cũ và tạo mới
+            
+        Returns:
+            Dict: Status và message
+            
+        Usage:
+            service = AIAgentService()
+            result = service.create_chroma_embeddings()
+            # Hoặc từ Django management command:
+            # python manage.py init_chroma --refresh
+        """
+        try:
+            from .chroma_service import ChromaDBService
+            
+            chroma_service = ChromaDBService()
+            result = chroma_service.add_product_embeddings(force_refresh=force_refresh)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error creating ChromaDB embeddings: {str(e)}")
+            return {"status": "error", "message": str(e)}

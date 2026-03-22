@@ -1,0 +1,8 @@
+# Optional dependencies for ChromaDB integration
+# Install with: pip install -r requirements-chroma.txt
+
+# ChromaDB vector database (semantic search)
+chromadb==0.4.24
+
+# Embedding models
+sentence-transformers==3.0.1

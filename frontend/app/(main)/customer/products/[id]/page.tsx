@@ -529,28 +529,68 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                                 />
                             </div>
 
-                            <div className="flex gap-3 mb-4">
+                            {/* Action Buttons */}
+                            <div className="mb-4">
+                                <div className="flex gap-2 mb-3">
+                                    <Button 
+                                        label="Mua ngay" 
+                                        icon="pi pi-bolt" 
+                                        className="flex-1 p-button-lg p-button-raised"
+                                        style={{ 
+                                            cursor: 'pointer',
+                                            borderRadius: '10px',
+                                            fontWeight: 600,
+                                            letterSpacing: '0.5px',
+                                            background: 'linear-gradient(135deg, #FF6B6B 0%, #EE5A6F 100%)',
+                                            border: 'none',
+                                            boxShadow: '0 4px 12px rgba(255, 107, 107, 0.3)',
+                                            padding: '12px 24px',
+                                            fontSize: '15px'
+                                        }}
+                                        onClick={buyNow}
+                                        disabled={(() => {
+                                            const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
+                                                ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
+                                                : product.variants && product.variants.length > 0 
+                                                ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
+                                                : product.stock;
+                                            return stock <= 0;
+                                        })()}
+                                    />
+                                    <Button 
+                                        icon="pi pi-comments" 
+                                        className="p-button-rounded p-button-lg"
+                                        style={{ 
+                                            cursor: 'pointer',
+                                            borderRadius: '10px',
+                                            width: '56px',
+                                            minWidth: '56px',
+                                            background: 'linear-gradient(135deg, #4ECDC4 0%, #44A8B3 100%)',
+                                            border: 'none',
+                                            boxShadow: '0 4px 12px rgba(78, 205, 196, 0.3)',
+                                            padding: 0
+                                        }}
+                                        onClick={() => router.push('/customer/ai-agent')}
+                                        title="Tư vấn với AI"
+                                    />
+                                </div>
                                 <Button 
                                     label="Thêm vào giỏ" 
                                     icon="pi pi-shopping-cart" 
-                                    className="flex-1 p-button-outlined p-button-lg"
-                                    style={{ cursor: 'pointer', opacity: 1 }}
+                                    className="w-full p-button-outlined p-button-lg"
+                                    style={{ 
+                                        cursor: 'pointer',
+                                        borderRadius: '10px',
+                                        fontWeight: 600,
+                                        letterSpacing: '0.5px',
+                                        border: '2px solid #4ECDC4',
+                                        color: '#4ECDC4',
+                                        padding: '12px 24px',
+                                        fontSize: '15px',
+                                        background: 'transparent',
+                                        boxShadow: '0 2px 8px rgba(78, 205, 196, 0.15)'
+                                    }}
                                     onClick={addToCart}
-                                    disabled={(() => {
-                                        const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
-                                            ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
-                                            : product.variants && product.variants.length > 0 
-                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0) 
-                                            : product.stock;
-                                        return stock <= 0;
-                                    })()}
-                                />
-                                <Button 
-                                    label="Mua ngay" 
-                                    icon="pi pi-bolt" 
-                                    className="flex-1 p-button-lg"
-                                    style={{ cursor: 'pointer', opacity: 1 }}
-                                    onClick={buyNow}
                                     disabled={(() => {
                                         const stock = selectedSize && product.variants?.find(v => v.size === selectedSize) 
                                             ? product.variants.find(v => v.size === selectedSize)?.stock ?? 0
