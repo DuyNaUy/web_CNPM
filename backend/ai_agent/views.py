@@ -2,6 +2,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
+from django.db.models import Q
+from django.utils import timezone
 from .models import ConversationSession
 from .serializers import (
     ConversationSessionSerializer, 
@@ -9,7 +11,6 @@ from .serializers import (
     CartItemChatbotSerializer
 )
 from .services import AIAgentService
-import uuid
 
 
 class ConversationViewSet(viewsets.ModelViewSet):
@@ -28,15 +29,87 @@ class ConversationViewSet(viewsets.ModelViewSet):
     
     serializer_class = ConversationSessionSerializer
     permission_classes = [AllowAny]
-    authentication_classes = []
     lookup_field = 'session_id'
 
     def get_queryset(self):
         """Lấy conversation của user hoặc anonymous"""
         if self.request.user.is_authenticated:
-            return ConversationSession.objects.filter(user=self.request.user)
+            if hasattr(self.request.user, 'role') and self.request.user.role == 'admin':
+                queryset = ConversationSession.objects.all().order_by('-updated_at')
+
+                search_id = (self.request.query_params.get('id') or '').strip()
+                customer_name = (self.request.query_params.get('customer_name') or '').strip()
+                created_date = (self.request.query_params.get('created_date') or '').strip()
+
+                if search_id:
+                    id_filter = Q(session_id__icontains=search_id)
+                    if search_id.isdigit():
+                        id_filter = id_filter | Q(id=int(search_id))
+                    queryset = queryset.filter(id_filter)
+                if customer_name:
+                    queryset = queryset.filter(user__full_name__icontains=customer_name)
+                if created_date:
+                    queryset = queryset.filter(created_at__date=created_date)
+
+                return queryset
+
+            return ConversationSession.objects.filter(user=self.request.user).order_by('-updated_at')
         else:
+            if self.action == 'list':
+                return ConversationSession.objects.none()
             return ConversationSession.objects.filter(user__isnull=True)
+
+    def destroy(self, request, *args, **kwargs):
+        """Chỉ admin được quyền xóa cuộc hội thoại"""
+        if not self._is_admin_user(request.user):
+            return Response({'error': 'Bạn không có quyền xóa cuộc hội thoại'}, status=status.HTTP_403_FORBIDDEN)
+
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response({'message': 'Đã xóa cuộc hội thoại thành công'}, status=status.HTTP_200_OK)
+
+    def _is_admin_user(self, user):
+        return user.is_authenticated and hasattr(user, 'role') and user.role == 'admin'
+
+    def _get_human_support_state(self, conversation):
+        ctx = conversation.get_context()
+        return ctx.get('human_support') or {}
+
+    def _save_human_support_state(self, conversation, support_state):
+        ctx = conversation.get_context()
+        ctx['human_support'] = support_state
+        conversation.set_context(ctx)
+        conversation.save(update_fields=['context', 'updated_at'])
+
+    def _is_human_support_request(self, message):
+        normalized = (message or '').lower().strip()
+        keywords = [
+            'liên hệ tư vấn viên',
+            'lien he tu van vien',
+            'tư vấn viên',
+            'tu van vien',
+            'nhân viên tư vấn',
+            'nhan vien tu van',
+            'gặp admin',
+            'gap admin',
+            'gặp người thật',
+            'gap nguoi that',
+        ]
+        return any(keyword in normalized for keyword in keywords)
+
+    def _is_resume_ai_request(self, message):
+        normalized = (message or '').lower().strip()
+        keywords = [
+            'chat với ai',
+            'chat voi ai',
+            'bật lại ai',
+            'bat lai ai',
+            'tiếp tục với ai',
+            'tiep tuc voi ai',
+            'tiếp tục chat với ai',
+            'tiep tuc chat voi ai',
+        ]
+        return any(keyword in normalized for keyword in keywords)
 
     def get_object(self):
         """Override để cho phép anonymous users truy cập"""
@@ -81,6 +154,80 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 {'error': 'Message cannot be empty'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        support_state = self._get_human_support_state(conversation)
+
+        if support_state.get('active') and self._is_resume_ai_request(message):
+            conversation.add_message('user', message)
+
+            support_state['active'] = False
+            support_state['unread_for_admin'] = False
+            support_state['ended_at'] = timezone.now().isoformat()
+            support_state['ended_by'] = 'customer'
+            self._save_human_support_state(conversation, support_state)
+
+            conversation.add_message(
+                'assistant',
+                'Bạn đã chuyển lại chế độ Chat với AI. Tôi có thể tiếp tục hỗ trợ bạn ngay bây giờ.'
+            )
+
+            return Response({
+                'conversation_id': conversation.session_id,
+                'user_message': message,
+                'ai_response': 'Bạn đã chuyển lại chế độ Chat với AI. Tôi có thể tiếp tục hỗ trợ bạn ngay bây giờ.',
+                'products': [],
+                'ai_paused': False,
+                'message': 'Đã chuyển sang Chat với AI.'
+            }, status=status.HTTP_200_OK)
+
+        # Fallback cứng: nếu khách nhắn yêu cầu tư vấn viên, bật chế độ human support ngay
+        # kể cả khi frontend không gọi được endpoint request_human_support.
+        if self._is_human_support_request(message):
+            conversation.add_message('user', message)
+
+            if not support_state.get('active'):
+                now_iso = timezone.now().isoformat()
+                support_state = {
+                    'active': True,
+                    'requested_at': now_iso,
+                    'requested_by': 'customer',
+                    'unread_for_admin': True,
+                    'last_customer_message_at': now_iso,
+                }
+                self._save_human_support_state(conversation, support_state)
+                conversation.add_message(
+                    'assistant',
+                    'Bạn đã được chuyển sang tư vấn viên. AI sẽ tạm dừng và admin sẽ phản hồi trực tiếp trong ít phút.'
+                )
+            else:
+                support_state['unread_for_admin'] = True
+                support_state['last_customer_message_at'] = timezone.now().isoformat()
+                self._save_human_support_state(conversation, support_state)
+
+            return Response({
+                'conversation_id': conversation.session_id,
+                'user_message': message,
+                'ai_response': None,
+                'products': [],
+                'ai_paused': True,
+                'message': 'Đã gửi yêu cầu liên hệ tư vấn viên. Vui lòng chờ admin phản hồi.'
+            }, status=status.HTTP_200_OK)
+
+        if support_state.get('active'):
+            conversation.add_message('user', message)
+
+            support_state['unread_for_admin'] = True
+            support_state['last_customer_message_at'] = timezone.now().isoformat()
+            self._save_human_support_state(conversation, support_state)
+
+            return Response({
+                'conversation_id': conversation.session_id,
+                'user_message': message,
+                'ai_response': None,
+                'products': [],
+                'ai_paused': True,
+                'message': 'AI đã tạm dừng. Tư vấn viên sẽ phản hồi trực tiếp cho bạn.'
+            }, status=status.HTTP_200_OK)
         
         # Gửi tin nhắn tới AI
         service = AIAgentService()
@@ -90,7 +237,49 @@ class ConversationViewSet(viewsets.ModelViewSet):
             'conversation_id': conversation.session_id,
             'user_message': message,
             'ai_response': ai_response['ai_response'],
-            'products': ai_response.get('products', [])
+            'products': ai_response.get('products', []),
+            'ai_paused': False
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='request_human_support')
+    def request_human_support(self, request, session_id=None):
+        """Khách hàng yêu cầu chuyển sang tư vấn viên, AI sẽ tạm dừng"""
+        conversation = self.get_object()
+
+        if self._is_admin_user(request.user):
+            return Response(
+                {'error': 'Admin không cần yêu cầu tư vấn viên'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        support_state = self._get_human_support_state(conversation)
+        if support_state.get('active'):
+            return Response({
+                'conversation_id': conversation.session_id,
+                'human_support_active': True,
+                'message': 'Yêu cầu tư vấn viên đã được ghi nhận trước đó.'
+            }, status=status.HTTP_200_OK)
+
+        now_iso = timezone.now().isoformat()
+        support_state = {
+            'active': True,
+            'requested_at': now_iso,
+            'requested_by': 'customer',
+            'unread_for_admin': True,
+            'last_customer_message_at': now_iso,
+        }
+
+        conversation.add_message(
+            'assistant',
+            'Bạn đã được chuyển sang tư vấn viên. AI sẽ tạm dừng và admin sẽ phản hồi trực tiếp trong ít phút.'
+        )
+        self._save_human_support_state(conversation, support_state)
+
+        return Response({
+            'conversation_id': conversation.session_id,
+            'human_support_active': True,
+            'ai_paused': True,
+            'message': 'Đã gửi yêu cầu liên hệ tư vấn viên thành công.'
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='get_history')
@@ -109,7 +298,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
         
         return Response({
             'conversation_id': conversation.session_id,
-            'messages': messages
+            'messages': messages,
+            'human_support_active': bool(self._get_human_support_state(conversation).get('active'))
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='close_conversation')
@@ -128,6 +318,111 @@ class ConversationViewSet(viewsets.ModelViewSet):
         
         return Response({
             'message': 'Conversation closed successfully'
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='admin_reply')
+    def admin_reply(self, request, session_id=None):
+        """Admin gửi tin nhắn trực tiếp cho khách hàng trong phiên hội thoại"""
+        if not self._is_admin_user(request.user):
+            return Response(
+                {'error': 'Bạn không có quyền gửi tin nhắn admin'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        conversation = self.get_object()
+        message = (request.data.get('message') or '').strip()
+
+        if not message:
+            return Response(
+                {'error': 'Message cannot be empty'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        conversation.add_message('admin', message)
+
+        support_state = self._get_human_support_state(conversation)
+        if support_state.get('active'):
+            support_state['unread_for_admin'] = False
+            support_state['last_admin_reply_at'] = timezone.now().isoformat()
+            self._save_human_support_state(conversation, support_state)
+
+        return Response({
+            'conversation_id': conversation.session_id,
+            'admin_message': message,
+            'timestamp': conversation.updated_at.isoformat()
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='resume_ai')
+    def resume_ai(self, request, session_id=None):
+        """Admin kết thúc tư vấn viên, bật lại AI cho phiên hội thoại"""
+        if not self._is_admin_user(request.user):
+            return Response(
+                {'error': 'Bạn không có quyền bật lại AI'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        conversation = self.get_object()
+        support_state = self._get_human_support_state(conversation)
+
+        if not support_state.get('active'):
+            return Response({
+                'conversation_id': conversation.session_id,
+                'human_support_active': False,
+                'message': 'AI đang ở trạng thái hoạt động.'
+            }, status=status.HTTP_200_OK)
+
+        support_state['active'] = False
+        support_state['unread_for_admin'] = False
+        support_state['ended_at'] = timezone.now().isoformat()
+        support_state['ended_by'] = 'admin'
+        self._save_human_support_state(conversation, support_state)
+
+        conversation.add_message(
+            'assistant',
+            'Tư vấn viên đã kết thúc phiên hỗ trợ trực tiếp. AI đã hoạt động trở lại để tiếp tục hỗ trợ bạn.'
+        )
+
+        return Response({
+            'conversation_id': conversation.session_id,
+            'human_support_active': False,
+            'message': 'Đã bật lại AI cho cuộc hội thoại này.'
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='customer_resume_ai')
+    def customer_resume_ai(self, request, session_id=None):
+        """Khách hàng tự chuyển lại chế độ chat với AI"""
+        if self._is_admin_user(request.user):
+            return Response(
+                {'error': 'Admin không sử dụng endpoint này'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        conversation = self.get_object()
+        support_state = self._get_human_support_state(conversation)
+
+        if not support_state.get('active'):
+            return Response({
+                'conversation_id': conversation.session_id,
+                'human_support_active': False,
+                'message': 'AI đang ở trạng thái hoạt động.'
+            }, status=status.HTTP_200_OK)
+
+        support_state['active'] = False
+        support_state['unread_for_admin'] = False
+        support_state['ended_at'] = timezone.now().isoformat()
+        support_state['ended_by'] = 'customer'
+        self._save_human_support_state(conversation, support_state)
+
+        conversation.add_message(
+            'assistant',
+            'Bạn đã chuyển lại chế độ Chat với AI. Tôi có thể tiếp tục hỗ trợ bạn ngay bây giờ.'
+        )
+
+        return Response({
+            'conversation_id': conversation.session_id,
+            'human_support_active': False,
+            'ai_paused': False,
+            'message': 'Đã chuyển sang Chat với AI.'
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='get_product_details')

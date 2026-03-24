@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Toast } from 'primereact/toast';
@@ -13,7 +13,7 @@ import { LayoutContext } from '@/layout/context/layoutcontext';
 import styles from './AIAgentChat.module.css';
 
 interface Message {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'admin';
   content: string;
   timestamp?: string;
   products?: Product[];
@@ -56,6 +56,11 @@ interface FAQItem {
 
 const FAQ_QUESTIONS: FAQItem[] = [
   {
+    id: 'human-support',
+    label: '👩‍💼 Liên hệ tư vấn viên',
+    question: 'Tôi muốn liên hệ tư vấn viên'
+  },
+  {
     id: 'purchase',
     label: '🛍️ Mua hàng',
     question: 'Tôi muốn mua sắm'
@@ -79,6 +84,7 @@ const FAQ_QUESTIONS: FAQItem[] = [
 
 interface AIAgentChatProps {
   conversationId: string;
+  onRecommendationsReceived?: (recommendations: any[]) => void;
 }
 
 // Product Card Component
@@ -509,8 +515,7 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
         <div style={{ 
           display: 'flex', 
           gap: '30px',
-          flexWrap: 'wrap',
-          '@media (max-width: 600px)': { gap: '15px' }
+          flexWrap: 'wrap'
         }}>
           {/* LEFT COLUMN: Product Image */}
           {product.image_url && (
@@ -726,8 +731,14 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
                     color: quantity <= 1 ? '#ccc' : '#d63739',
                     transition: 'all 0.2s'
                   }}
-                  onMouseEnter={(e) => !isLoading && quantity > 1 && (e.target.style.backgroundColor = '#ffe5e5')}
-                  onMouseLeave={(e) => (e.target.style.backgroundColor = '#fff')}
+                  onMouseEnter={(e) => {
+                    if (!isLoading && quantity > 1) {
+                      e.currentTarget.style.backgroundColor = '#ffe5e5';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#fff';
+                  }}
                 >
                   −
                 </button>
@@ -762,8 +773,14 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
                     color: quantity >= availableStock ? '#ccc' : '#d63739',
                     transition: 'all 0.2s'
                   }}
-                  onMouseEnter={(e) => !isLoading && quantity < availableStock && (e.target.style.backgroundColor = '#ffe5e5')}
-                  onMouseLeave={(e) => (e.target.style.backgroundColor = '#fff')}
+                  onMouseEnter={(e) => {
+                    if (!isLoading && quantity < availableStock) {
+                      e.currentTarget.style.backgroundColor = '#ffe5e5';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#fff';
+                  }}
                 >
                   +
                 </button>
@@ -952,6 +969,7 @@ export default function AIAgentChat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [aiPaused, setAiPaused] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -975,30 +993,14 @@ export default function AIAgentChat({
     return sorted.slice(0, 5);
   };
 
-  // Guard: Check if conversationId is valid
-  if (!conversationId) {
-    console.warn('[AIAgentChat] conversationId is null/undefined');
-    return (
-      <div className={styles.chatContainer}>
-        <div className={styles.emptyState}>
-          <div className={styles.emptyIcon}>🧸</div>
-          <p className={styles.emptyText}>Đang khởi tạo cuộc trò chuyện...</p>
-        </div>
-      </div>
-    );
-  }
-
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Load conversation history on mount
-  useEffect(() => {
-    loadConversationHistory();
-  }, [conversationId]);
+  const loadConversationHistory = useCallback(async () => {
+    if (!conversationId) return;
 
-  const loadConversationHistory = async () => {
     try {
       const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -1015,14 +1017,31 @@ export default function AIAgentChat({
       if (response.ok) {
         const data = await response.json();
         setMessages(data.messages || []);
+        setAiPaused(Boolean(data.human_support_active));
       }
     } catch (error) {
       console.error('Failed to load conversation history:', error);
     }
-  };
+  }, [conversationId]);
+
+  // Load conversation history on mount
+  useEffect(() => {
+    void loadConversationHistory();
+  }, [loadConversationHistory]);
+
+  // Poll history to receive admin replies in near real time.
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const interval = setInterval(() => {
+      void loadConversationHistory();
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [conversationId, loadConversationHistory]);
 
   const sendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !conversationId) return;
 
     const userMessage: Message = {
       role: 'user',
@@ -1060,15 +1079,31 @@ export default function AIAgentChat({
         console.log('[AIAgentChat] Received response:', data);
         console.log('[AIAgentChat] Products in response:', data.products);
 
-        const assistantMessage: Message = {
-          role: 'assistant',
-          content: data.ai_response || 'Không có phản hồi',
-          timestamp: new Date().toISOString(),
-          products: data.products || [],
-        };
-        
-        console.log('[AIAgentChat] Assistant message with products:', assistantMessage);
-        setMessages((prev) => [...prev, assistantMessage]);
+        if (data.ai_paused) {
+          setAiPaused(true);
+          if (data.message) {
+            const noticeMessage: Message = {
+              role: 'assistant',
+              content: data.message,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, noticeMessage]);
+          }
+          return;
+        }
+
+        setAiPaused(false);
+        if (data.ai_response) {
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: data.ai_response,
+            timestamp: new Date().toISOString(),
+            products: data.products || [],
+          };
+
+          console.log('[AIAgentChat] Assistant message with products:', assistantMessage);
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
       } else {
         const errorMessage: Message = {
           role: 'assistant',
@@ -1098,7 +1133,80 @@ export default function AIAgentChat({
   };
 
   const handleFAQClick = (faq: FAQItem) => {
-    setInputValue(faq.question);
+    if (!conversationId) return;
+
+    if (faq.id === 'human-support') {
+      setInputValue('');
+      setIsLoading(true);
+
+      (async () => {
+        try {
+          const token = localStorage.getItem('access_token');
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+          const headers: any = {
+            'Content-Type': 'application/json',
+          };
+          if (token) {
+            headers.Authorization = `Bearer ${token}`;
+          }
+
+          const response = await fetch(
+            `${apiUrl}/api/ai/conversations/${conversationId}/request_human_support/`,
+            {
+              method: 'POST',
+              headers,
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            setAiPaused(Boolean(data.ai_paused ?? data.human_support_active));
+            await loadConversationHistory();
+          } else {
+            // Fallback: gửi tin nhắn thường để backend tự nhận diện yêu cầu tư vấn viên.
+            const fallbackResponse = await fetch(
+              `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
+              {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ message: faq.question }),
+              }
+            );
+
+            if (fallbackResponse.ok) {
+              const fallbackData = await fallbackResponse.json();
+              setAiPaused(Boolean(fallbackData.ai_paused));
+              await loadConversationHistory();
+            } else {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: 'assistant',
+                  content: 'Không thể gửi yêu cầu liên hệ tư vấn viên lúc này. Vui lòng thử lại sau.',
+                  timestamp: new Date().toISOString(),
+                },
+              ]);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to request human support:', error);
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: 'Kết nối đang gặp sự cố, chưa gửi được yêu cầu tư vấn viên.',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+
+      return;
+    }
+
+    setInputValue('');
     setTimeout(() => {
       const userMessage: Message = {
         role: 'user',
@@ -1132,13 +1240,28 @@ export default function AIAgentChat({
 
           if (response.ok) {
             const data = await response.json();
-            const assistantMessage: Message = {
-              role: 'assistant',
-              content: data.ai_response || 'Không có phản hồi',
-              timestamp: new Date().toISOString(),
-              products: data.products || [],
-            };
-            setMessages((prev) => [...prev, assistantMessage]);
+            if (data.ai_paused) {
+              setAiPaused(true);
+              if (data.message) {
+                const noticeMessage: Message = {
+                  role: 'assistant',
+                  content: data.message,
+                  timestamp: new Date().toISOString(),
+                };
+                setMessages((prev) => [...prev, noticeMessage]);
+              }
+            } else {
+              setAiPaused(false);
+              if (data.ai_response) {
+                const assistantMessage: Message = {
+                  role: 'assistant',
+                  content: data.ai_response,
+                  timestamp: new Date().toISOString(),
+                  products: data.products || [],
+                };
+                setMessages((prev) => [...prev, assistantMessage]);
+              }
+            }
           }
         } catch (error) {
           console.error('Failed to send FAQ:', error);
@@ -1149,6 +1272,115 @@ export default function AIAgentChat({
     }, 100);
   };
 
+  const handleCustomerResumeAI = async () => {
+    if (!conversationId || !aiPaused) return;
+
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const headers: any = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `${apiUrl}/api/ai/conversations/${conversationId}/customer_resume_ai/`,
+        {
+          method: 'POST',
+          headers,
+        }
+      );
+
+      if (response.ok) {
+        setAiPaused(false);
+        await loadConversationHistory();
+      } else {
+        // Retry 1: thử lại không kèm Authorization để tránh lỗi token cũ.
+        const retryResponse = await fetch(
+          `${apiUrl}/api/ai/conversations/${conversationId}/customer_resume_ai/`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (retryResponse.ok) {
+          setAiPaused(false);
+          await loadConversationHistory();
+        } else {
+          // Retry 2: fallback gửi intent, backend sẽ tự chuyển về AI mode.
+          const fallbackResponse = await fetch(
+            `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ message: 'Chat với AI' }),
+            }
+          );
+
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            setAiPaused(Boolean(fallbackData.ai_paused));
+            await loadConversationHistory();
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: 'assistant',
+                content: 'Không thể chuyển sang chế độ Chat với AI lúc này. Vui lòng thử lại.',
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to switch back to AI mode:', error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'Đã xảy ra lỗi kết nối khi chuyển về Chat với AI.',
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getSenderName = (role: Message['role']) => {
+    if (role === 'user') return 'Tôi';
+    if (role === 'admin') return 'Admin tư vấn';
+    return 'AI tư vấn';
+  };
+
+  const formatMessageTime = (timestamp?: string) => {
+    if (!timestamp) return '';
+    const d = new Date(timestamp);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  if (!conversationId) {
+    console.warn('[AIAgentChat] conversationId is null/undefined');
+    return (
+      <div className={styles.chatContainer}>
+        <div className={styles.emptyState}>
+          <div className={styles.emptyIcon}>🧸</div>
+          <p className={styles.emptyText}>Đang khởi tạo cuộc trò chuyện...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.chatContainer}>
       {/* Header */}
@@ -1156,7 +1388,9 @@ export default function AIAgentChat({
         <div className={styles.headerAvatar}>🧸</div>
         <div className={styles.headerInfo}>
           <h2 className={styles.headerTitle}>Trợ lý AI Teddy Shop</h2>
-          <p className={styles.headerSubtitle}>Sẵn sàng giúp bạn tìm gấu thú yêu thích</p>
+          <p className={styles.headerSubtitle}>
+            {aiPaused ? 'Đang chờ tư vấn viên phản hồi trực tiếp' : 'Sẵn sàng giúp bạn tìm gấu thú yêu thích'}
+          </p>
         </div>
       </div>
 
@@ -1172,7 +1406,16 @@ export default function AIAgentChat({
             {messages.map((msg, idx) => (
               <div key={idx} className={`${styles.message} ${styles[msg.role]}`}>
                 <div className={styles.messageBubble}>
-                  {msg.content && <p>{msg.content}</p>}
+                  <div className={styles.messageHeader}>
+                    <span className={`${styles.senderTag} ${styles[`${msg.role}Tag`]}`}>
+                      {getSenderName(msg.role)}
+                    </span>
+                    {msg.timestamp && (
+                      <span className={styles.messageTimestamp}>{formatMessageTime(msg.timestamp)}</span>
+                    )}
+                  </div>
+
+                  {msg.content && <p className={styles.messageText}>{msg.content}</p>}
                   
                   {/* Product Display */}
                   {msg.products && msg.products.length > 0 && (
@@ -1205,6 +1448,20 @@ export default function AIAgentChat({
       </div>
 
       {/* FAQ Questions */}
+      {aiPaused && (
+        <div className={styles.humanSupportNotice}>
+          <span>AI đã tạm dừng. Bạn vẫn có thể nhắn tin và tư vấn viên sẽ trả lời trực tiếp.</span>
+          <button
+            type="button"
+            className={styles.resumeAiButton}
+            onClick={handleCustomerResumeAI}
+            disabled={isLoading}
+          >
+            Chat với AI
+          </button>
+        </div>
+      )}
+
       <div className={styles.faqSection}>
         <p className={styles.faqLabel}>Câu hỏi thường gặp:</p>
         <div className={styles.faqButtons}>

@@ -152,14 +152,11 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}): Promise<
         if (response.status === 401 && token && (!config.method || config.method === 'GET')) {
             console.warn('[API] Got 401 with token for GET request, retrying without token...');
             // Remove authorization header and retry
+            const { Authorization: _authorization, ...headersWithoutAuth } = headers as Record<string, string>;
             const configWithoutAuth = {
                 ...config,
-                headers: {
-                    ...headers,
-                    Authorization: undefined
-                }
+                headers: headersWithoutAuth
             };
-            delete configWithoutAuth.headers['Authorization'];
             
             response = await fetch(`${API_BASE_URL}${endpoint}`, configWithoutAuth);
             try {

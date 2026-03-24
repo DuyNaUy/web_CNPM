@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import AIAgentChat from './AIAgentChat';
 import OrderPreview from './OrderPreview';
 import styles from './AIAgentConsole.module.css';
@@ -24,34 +24,7 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
   const [selectedRecommendations, setSelectedRecommendations] = useState<Recommendation[]>([]);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
 
-  // Listen for address form submission from chat
-  useEffect(() => {
-    const handleAddressFormSubmit = (event: any) => {
-      const { addressInfo, recommendations, estimatedTotal } = event.detail;
-      handleConfirmOrder({
-        address_info: addressInfo,
-        payment_method: addressInfo.payment_method || 'cod'
-      });
-    };
-
-    window.addEventListener('addressFormSubmit', handleAddressFormSubmit);
-    return () => window.removeEventListener('addressFormSubmit', handleAddressFormSubmit);
-  }, [conversationId, selectedRecommendations]);
-
-  // Kiểm tra localStorage khi component mount
-  useEffect(() => {
-    const savedSessionId = localStorage.getItem('teddy_ai_session_id');
-    if (savedSessionId) {
-      console.log('[AIAgentConsole] Loaded conversation from localStorage:', savedSessionId);
-      setConversationId(savedSessionId);
-    } else {
-      // Auto-start conversation if not exists
-      console.log('[AIAgentConsole] No conversation found, auto-starting...');
-      handleStartConversation();
-    }
-  }, []);
-
-  const handleStartConversation = async () => {
+  const handleStartConversation = useCallback(async () => {
     try {
       const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -72,7 +45,7 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
     } catch (error) {
       console.error('Failed to start conversation:', error);
     }
-  };
+  }, []);
 
   const handleNewConversation = () => {
     if (window.confirm('Bạn có chắc muốn bắt đầu cuộc trò chuyện mới? Lịch sử hiện tại sẽ được thay thế.')) {
@@ -88,7 +61,7 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
     setSelectedRecommendations(recommendations);
   };
 
-  const handleConfirmOrder = async (orderData: any) => {
+  const handleConfirmOrder = useCallback(async (orderData: any) => {
     if (!conversationId) return;
 
     setIsCreatingOrder(true);
@@ -173,7 +146,34 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
     } finally {
       setIsCreatingOrder(false);
     }
-  };
+  }, [conversationId, selectedRecommendations]);
+
+  // Listen for address form submission from chat
+  useEffect(() => {
+    const handleAddressFormSubmit = (event: any) => {
+      const { addressInfo } = event.detail;
+      handleConfirmOrder({
+        address_info: addressInfo,
+        payment_method: addressInfo.payment_method || 'cod'
+      });
+    };
+
+    window.addEventListener('addressFormSubmit', handleAddressFormSubmit);
+    return () => window.removeEventListener('addressFormSubmit', handleAddressFormSubmit);
+  }, [handleConfirmOrder]);
+
+  // Kiểm tra localStorage khi component mount
+  useEffect(() => {
+    const savedSessionId = localStorage.getItem('teddy_ai_session_id');
+    if (savedSessionId) {
+      console.log('[AIAgentConsole] Loaded conversation from localStorage:', savedSessionId);
+      setConversationId(savedSessionId);
+    } else {
+      // Auto-start conversation if not exists
+      console.log('[AIAgentConsole] No conversation found, auto-starting...');
+      void handleStartConversation();
+    }
+  }, [handleStartConversation]);
 
   if (!conversationId) {
     return (

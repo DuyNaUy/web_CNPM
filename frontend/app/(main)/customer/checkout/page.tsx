@@ -128,7 +128,7 @@ const CheckoutPage = () => {
                 }
             }
         }
-    }, []);
+    }, [router]);
 
     const calculateSubtotal = () => {
         return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);

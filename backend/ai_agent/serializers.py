@@ -7,11 +7,48 @@ import json
 
 class ConversationSessionSerializer(serializers.ModelSerializer):
     """Serializer cho Conversation Sessions - SIMPLIFIED VERSION"""
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    user_full_name = serializers.CharField(source='user.full_name', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
+    message_count = serializers.SerializerMethodField()
+    customer_display_name = serializers.SerializerMethodField()
+    human_support_active = serializers.SerializerMethodField()
+    human_support_unread_for_admin = serializers.SerializerMethodField()
     
     class Meta:
         model = ConversationSession
-        fields = ['id', 'session_id', 'title', 'created_at', 'updated_at', 'is_active']
+        fields = [
+            'id',
+            'session_id',
+            'title',
+            'user_id',
+            'user_full_name',
+            'user_email',
+            'customer_display_name',
+            'message_count',
+            'human_support_active',
+            'human_support_unread_for_admin',
+            'created_at',
+            'updated_at',
+            'is_active',
+        ]
         read_only_fields = ['session_id', 'created_at', 'updated_at']
+
+    def get_message_count(self, obj):
+        return len(obj.get_conversation_with_products())
+
+    def get_customer_display_name(self, obj):
+        if obj.user and obj.user.full_name:
+            return obj.user.full_name
+        return 'Khách vãng lai'
+
+    def get_human_support_active(self, obj):
+        ctx = obj.get_context()
+        return bool((ctx.get('human_support') or {}).get('active'))
+
+    def get_human_support_unread_for_admin(self, obj):
+        ctx = obj.get_context()
+        return bool((ctx.get('human_support') or {}).get('unread_for_admin'))
 
 
 class ProductVariantChatbotSerializer(serializers.ModelSerializer):

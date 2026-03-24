@@ -172,6 +172,10 @@
   justify-content: flex-start;
 }
 
+.message.admin {
+  justify-content: flex-start;
+}
+
 .avatar {
   font-size: 20px;
   min-width: 36px;
@@ -588,29 +592,89 @@
 .messageBubble {
   background: white;
   padding: 14px 18px;
-  border-radius: 12px;
+  border-radius: 14px;
   max-width: 80%;
   word-wrap: break-word;
   white-space: pre-wrap;
   font-size: 14px;
-  line-height: 1.6;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  line-height: 1.65;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.messageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.senderTag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 8px;
+  line-height: 1.35;
+}
+
+.assistantTag {
+  color: #b2225a;
+  background: rgba(255, 107, 157, 0.14);
+}
+
+.adminTag {
+  color: #1b4f85;
+  background: rgba(70, 135, 214, 0.16);
+}
+
+.userTag {
+  color: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.messageTimestamp {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.74;
+  white-space: nowrap;
+}
+
+.messageText {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  font-weight: 500;
 }
 
 .message.user .messageBubble {
   background: linear-gradient(135deg, #FF6B9D 0%, #FF5285 50%, #E63A6C 100%);
   color: white;
-  border-radius: 14px 2px 14px 14px;
+  border-radius: 16px 4px 16px 16px;
   border: none;
   box-shadow: 0 6px 18px rgba(230, 58, 108, 0.28);
 }
 
+.message.user .messageTimestamp {
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .message.assistant .messageBubble {
-  background: white;
+  background: linear-gradient(135deg, #fff9fc 0%, #ffffff 100%);
   color: #333;
-  border-radius: 2px 14px 14px 14px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 4px 16px 16px 16px;
+  border: 1px solid rgba(230, 58, 108, 0.16);
+}
+
+.message.admin .messageBubble {
+  background: linear-gradient(135deg, #e9f3ff 0%, #f5f9ff 100%);
+  color: #134074;
+  border-radius: 4px 16px 16px 16px;
+  border: 1px solid rgba(19, 64, 116, 0.18);
 }
 
 /* Products List - Mỗi sản phẩm một hàng */
@@ -779,6 +843,44 @@
   border-top: 1px solid rgba(0, 0, 0, 0.04);
 }
 
+.humanSupportNotice {
+  margin: 10px 24px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(70, 135, 214, 0.28);
+  background: linear-gradient(135deg, #eef6ff 0%, #f8fbff 100%);
+  color: #1b4f85;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.resumeAiButton {
+  border: 1px solid rgba(27, 79, 133, 0.35);
+  background: #ffffff;
+  color: #1b4f85;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.resumeAiButton:hover:not(:disabled) {
+  background: #e7f1ff;
+  border-color: rgba(27, 79, 133, 0.5);
+}
+
+.resumeAiButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .faqLabel {
   margin: 0 0 8px 0;
   font-size: 12px;
@@ -939,6 +1041,16 @@
   .messageBubble {
     max-width: 85%;
     font-size: 13px;
+  }
+
+  .senderTag,
+  .messageTimestamp {
+    font-size: 10px;
+  }
+
+  .messageText {
+    font-size: 13px;
+    line-height: 1.65;
   }
 
   .productCard {

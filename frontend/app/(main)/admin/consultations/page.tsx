@@ -1,13 +1,13 @@
-/* eslint-disable @next/next/no-img-element */
 'use client';
 
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
 import { Dialog } from 'primereact/dialog';
-import { InputTextarea } from 'primereact/inputtextarea';
+import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
+import { InputText } from 'primereact/inputtext';
 import { Toast } from 'primereact/toast';
 import { Tag } from 'primereact/tag';
 import { Skeleton } from 'primereact/skeleton';
@@ -23,96 +23,108 @@ interface ConversationSession {
   id: number;
   session_id: string;
   title: string;
-  user_id: number | null;
-  user_full_name: string | null;
-  user_email: string | null;
+  user_id?: number | null;
+  user_full_name?: string | null;
+  user_email?: string | null;
+  customer_display_name?: string;
+  message_count?: number;
+  human_support_active?: boolean;
+  human_support_unread_for_admin?: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  message_count?: number;
-  messages?: Message[];
 }
+
+const getDisplaySessionCode = (conv: ConversationSession): string => {
+  // Phiên cũ có thể vẫn là session_xxx, fallback về mã số theo ID để admin dễ đọc.
+  return /^\d+$/.test(conv.session_id) ? conv.session_id : String(conv.id).padStart(6, '0');
+};
+
+const getLocalDateKey = (isoDate: string): string => {
+  const d = new Date(isoDate);
+  const year = d.getFullYear();
+  const month = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 const ConsultationsPage = () => {
   const router = useRouter();
-  const { role } = useContext(LayoutContext);
+  const { role, roleHydrated } = useContext(LayoutContext);
+
   const [conversations, setConversations] = useState<ConversationSession[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedConversation, setSelectedConversation] = useState<ConversationSession | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+
+  const [rawSearchId, setRawSearchId] = useState('');
+  const [rawSearchCustomer, setRawSearchCustomer] = useState('');
+  const [searchId, setSearchId] = useState('');
+  const [searchCustomer, setSearchCustomer] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [showOnlySupportAlerts, setShowOnlySupportAlerts] = useState(false);
+
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [selectedConversation, setSelectedConversation] = useState<ConversationSession | null>(null);
+  const [selectedMessages, setSelectedMessages] = useState<Message[]>([]);
   const [adminReply, setAdminReply] = useState('');
-  const [replying, setReplying] = useState(false);
+  const [sendingAdminReply, setSendingAdminReply] = useState(false);
+  const [resumingAI, setResumingAI] = useState(false);
+  const [detailHumanSupportActive, setDetailHumanSupportActive] = useState(false);
+
   const toast = useRef<Toast>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Redirect if not admin
-    if (role && role !== 'admin') {
+    if (!roleHydrated) return;
+    if (role !== 'admin') {
       router.push('/');
     }
-  }, [role, router]);
+  }, [roleHydrated, role, router]);
 
   useEffect(() => {
+    if (!roleHydrated) return;
     if (role === 'admin') {
-      loadConversations();
+      void loadConversations(true);
     }
-  }, [role]);
+  }, [roleHydrated, role]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [selectedConversation?.messages]);
+    if (!roleHydrated || role !== 'admin') return;
 
-  // Auto-load new messages every 2 seconds when dialog is open
+    const interval = setInterval(() => {
+      void loadConversations(false);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [roleHydrated, role]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setSearchId(rawSearchId.trim());
+      setSearchCustomer(rawSearchCustomer.trim());
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [rawSearchId, rawSearchCustomer]);
+
   useEffect(() => {
     if (!showDetailDialog || !selectedConversation) return;
 
-    const pollInterval = setInterval(async () => {
-      try {
-        const token = localStorage.getItem('access_token');
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        
-        const response = await fetch(`${apiUrl}/api/ai/conversations/${selectedConversation.session_id}/get_history/`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+    const interval = setInterval(() => {
+      void loadConversationDetail(selectedConversation, false);
+    }, 4000);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.messages) {
-            setSelectedConversation(prev => {
-              if (!prev) return prev;
-              // Only update if messages changed
-              if (JSON.stringify(prev.messages) !== JSON.stringify(data.messages)) {
-                return {
-                  ...prev,
-                  messages: data.messages
-                };
-              }
-              return prev;
-            });
-          }
-        }
-      } catch (error) {
-        // Silent error - don't show toast on polling
-        console.error('Auto-refresh failed:', error);
-      }
-    }, 2000); // Poll every 2 seconds
+    return () => clearInterval(interval);
+  }, [showDetailDialog, selectedConversation]);
 
-    return () => clearInterval(pollInterval);
-  }, [showDetailDialog, selectedConversation?.session_id]);
+  const loadConversations = async (showLoading = false) => {
+    if (showLoading) setLoading(true);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const loadConversations = async () => {
-    setLoading(true);
     try {
       const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      
-      const response = await fetch(`${apiUrl}/api/ai/conversations/?limit=100`, {
+
+      const response = await fetch(`${apiUrl}/api/ai/conversations/?limit=200`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -120,189 +132,363 @@ const ConsultationsPage = () => {
 
       if (response.ok) {
         const data = await response.json();
-        // Handle both paginated and non-paginated responses
-        const conversations_list = Array.isArray(data) ? data : (data.results || []);
-        setConversations(conversations_list);
+        const list = Array.isArray(data) ? data : data.results || [];
+        setConversations(list);
       } else if (response.status === 401) {
         toast.current?.show({
           severity: 'warn',
           summary: 'Hết phiên',
           detail: 'Vui lòng đăng nhập lại',
-          life: 3000
+          life: 2500,
         });
       }
     } catch (error) {
       console.error('Error loading conversations:', error);
-      toast.current?.show({
-        severity: 'error',
-        summary: 'Lỗi',
-        detail: 'Không thể tải danh sách tư vấn',
-        life: 3000
-      });
+      if (showLoading) {
+        toast.current?.show({
+          severity: 'error',
+          summary: 'Lỗi',
+          detail: 'Không thể tải danh sách hội thoại',
+          life: 2500,
+        });
+      }
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
-  const loadConversationDetail = async (sessionId: string) => {
+  const filteredConversations = useMemo(() => {
+    return conversations.filter((conv) => {
+      const paddedId = String(conv.id).padStart(3, '0');
+      const displaySessionCode = getDisplaySessionCode(conv);
+      const customerName = (conv.customer_display_name || conv.user_full_name || 'Khách vãng lai').toLowerCase();
+
+      const byId = !searchId.trim()
+        || paddedId.includes(searchId.trim())
+        || String(conv.id).includes(searchId.trim())
+        || displaySessionCode.includes(searchId.trim())
+        || conv.session_id.toLowerCase().includes(searchId.trim().toLowerCase());
+
+      const byCustomer = !searchCustomer.trim() || customerName.includes(searchCustomer.trim().toLowerCase());
+
+      const createdDate = getLocalDateKey(conv.created_at);
+      const byFromDate = !fromDate || createdDate >= fromDate;
+      const byToDate = !toDate || createdDate <= toDate;
+
+      const bySupportAlert = !showOnlySupportAlerts || Boolean(conv.human_support_unread_for_admin);
+
+      return byId && byCustomer && byFromDate && byToDate && bySupportAlert;
+    });
+  }, [conversations, searchId, searchCustomer, fromDate, toDate, showOnlySupportAlerts]);
+
+  const supportAlertCount = useMemo(
+    () => conversations.filter((item) => item.human_support_unread_for_admin).length,
+    [conversations]
+  );
+
+  const loadConversationDetail = async (conversation: ConversationSession, openDialog = true) => {
     try {
       const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      
-      const response = await fetch(`${apiUrl}/api/ai/conversations/${sessionId}/get_history/`, {
+
+      const response = await fetch(`${apiUrl}/api/ai/conversations/${conversation.session_id}/get_history/`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const conversation = conversations.find(c => c.session_id === sessionId);
-        if (conversation && data.messages) {
-          setSelectedConversation({
-            ...conversation,
-            messages: data.messages || []
-          });
-          setShowDetailDialog(true);
-        }
+      if (!response.ok) {
+        toast.current?.show({
+          severity: 'error',
+          summary: 'Lỗi',
+          detail: 'Không thể tải chi tiết hội thoại',
+          life: 2500,
+        });
+        return;
+      }
+
+      const data = await response.json();
+      setSelectedConversation((prev) => {
+        const base = prev && prev.session_id === conversation.session_id ? prev : conversation;
+        return {
+          ...base,
+          human_support_active: Boolean(data.human_support_active),
+        };
+      });
+      setSelectedMessages(data.messages || []);
+      setDetailHumanSupportActive(Boolean(data.human_support_active));
+      if (openDialog) {
+        setShowDetailDialog(true);
       }
     } catch (error) {
       console.error('Error loading conversation detail:', error);
       toast.current?.show({
         severity: 'error',
         summary: 'Lỗi',
-        detail: 'Không thể tải chi tiết tư vấn',
-        life: 3000
+        detail: 'Không thể tải chi tiết hội thoại',
+        life: 2500,
       });
     }
   };
 
-  const handleSendReply = async () => {
-    if (!adminReply.trim() || !selectedConversation) return;
+  const sendAdminReply = async () => {
+    if (!selectedConversation || !adminReply.trim()) return;
 
-    setReplying(true);
+    setSendingAdminReply(true);
+
     try {
       const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const messageContent = adminReply.trim();
 
-      // Save to backend - send message as admin
-      const response = await fetch(`${apiUrl}/api/ai/conversations/${selectedConversation.session_id}/send_message/`, {
+      const response = await fetch(`${apiUrl}/api/ai/conversations/${selectedConversation.session_id}/admin_reply/`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: messageContent,
-          is_admin: true
-        })
+        body: JSON.stringify({ message: adminReply.trim() }),
       });
 
-      if (response.ok) {
-        // Add admin reply to conversation UI
-        const updatedMessages = [
-          ...(selectedConversation.messages || []),
-          {
-            role: 'admin' as const,
-            content: messageContent,
-            timestamp: new Date().toISOString()
-          }
-        ];
-
-        setSelectedConversation({
-          ...selectedConversation,
-          messages: updatedMessages
-        });
-
-        toast.current?.show({
-          severity: 'success',
-          summary: 'Thành công',
-          detail: 'Trả lời đã được gửi đến khách hàng',
-          life: 2000
-        });
-
-        setAdminReply('');
-      } else {
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
         toast.current?.show({
           severity: 'error',
           summary: 'Lỗi',
-          detail: 'Không thể gửi trả lời',
-          life: 3000
+          detail: data.error || 'Không thể gửi tin nhắn admin',
+          life: 2500,
         });
+        return;
       }
+
+      setAdminReply('');
+      await loadConversationDetail(selectedConversation, false);
+      await loadConversations(false);
+
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Đã gửi',
+        detail: 'Tin nhắn admin đã được gửi tới khách hàng',
+        life: 1800,
+      });
     } catch (error) {
-      console.error('Error sending reply:', error);
+      console.error('Error sending admin reply:', error);
       toast.current?.show({
         severity: 'error',
         summary: 'Lỗi',
-        detail: 'Không thể gửi trả lời',
-        life: 3000
+        detail: 'Không thể gửi tin nhắn admin',
+        life: 2500,
       });
     } finally {
-      setReplying(false);
+      setSendingAdminReply(false);
     }
   };
 
-  const userBodyTemplate = (rowData: ConversationSession) => {
-    if (rowData.user_id) {
-      return (
-        <div>
-          <div className="font-semibold text-sm">{rowData.user_full_name}</div>
-          <div className="text-xs text-500">{rowData.user_email}</div>
-        </div>
-      );
+  const handleResumeAI = async () => {
+    if (!selectedConversation) return;
+
+    setResumingAI(true);
+
+    try {
+      const token = localStorage.getItem('access_token');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+      const response = await fetch(`${apiUrl}/api/ai/conversations/${selectedConversation.session_id}/resume_ai/`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        toast.current?.show({
+          severity: 'error',
+          summary: 'Lỗi',
+          detail: data.error || 'Không thể bật lại AI',
+          life: 2500,
+        });
+        return;
+      }
+
+      setDetailHumanSupportActive(false);
+      setSelectedConversation((prev) => (prev ? { ...prev, human_support_active: false } : prev));
+      await loadConversationDetail(selectedConversation, false);
+      await loadConversations(false);
+
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Đã bật AI',
+        detail: data.message || 'AI đã hoạt động trở lại',
+        life: 2000,
+      });
+    } catch (error) {
+      console.error('Error resuming AI:', error);
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Lỗi',
+        detail: 'Không thể bật lại AI',
+        life: 2500,
+      });
+    } finally {
+      setResumingAI(false);
     }
-    return <Tag value="Khách vãng lai" severity="info" />;
   };
 
-  const statusBodyTemplate = (rowData: ConversationSession) => {
-    return rowData.is_active ? 
-      <Tag value="Đang hoạt động" severity="success" /> : 
-      <Tag value="Đã đóng" severity="info" />;
+  const deleteConversation = async (conversation: ConversationSession) => {
+    setDeletingSessionId(conversation.session_id);
+
+    try {
+      const token = localStorage.getItem('access_token');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+      const response = await fetch(`${apiUrl}/api/ai/conversations/${conversation.session_id}/`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        toast.current?.show({
+          severity: 'error',
+          summary: 'Lỗi',
+          detail: 'Không thể xóa hội thoại',
+          life: 2500,
+        });
+        return;
+      }
+
+      setConversations((prev) => prev.filter((item) => item.session_id !== conversation.session_id));
+      if (selectedConversation?.session_id === conversation.session_id) {
+        setShowDetailDialog(false);
+        setSelectedConversation(null);
+        setSelectedMessages([]);
+      }
+
+      toast.current?.show({
+        severity: 'success',
+        summary: 'Đã xóa',
+        detail: 'Cuộc hội thoại đã được xóa',
+        life: 2000,
+      });
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      toast.current?.show({
+        severity: 'error',
+        summary: 'Lỗi',
+        detail: 'Không thể xóa hội thoại',
+        life: 2500,
+      });
+    } finally {
+      setDeletingSessionId(null);
+    }
   };
 
-  const dateBodyTemplate = (rowData: ConversationSession) => {
-    return new Date(rowData.updated_at).toLocaleString('vi-VN');
+  const handleDeleteConversation = (conversation: ConversationSession) => {
+    const customerName = conversation.customer_display_name || conversation.user_full_name || 'Khách vãng lai';
+    const paddedId = String(conversation.id).padStart(3, '0');
+
+    confirmDialog({
+      header: 'Xác nhận xóa hội thoại',
+      message: `Bạn có chắc muốn xóa hội thoại ${paddedId} của ${customerName}?`,
+      icon: 'pi pi-exclamation-triangle',
+      acceptLabel: 'Xóa',
+      rejectLabel: 'Hủy',
+      acceptClassName: 'p-button-danger',
+      accept: () => {
+        void deleteConversation(conversation);
+      },
+    });
   };
 
-  const messageCountTemplate = (rowData: ConversationSession) => {
-    return <span className="badge badge-info">{rowData.message_count || 0}</span>;
+  const clearFilters = () => {
+    setRawSearchId('');
+    setRawSearchCustomer('');
+    setSearchId('');
+    setSearchCustomer('');
+    setFromDate('');
+    setToDate('');
+    setShowOnlySupportAlerts(false);
   };
 
-  const actionBodyTemplate = (rowData: ConversationSession) => {
+  const customerCell = (row: ConversationSession) => {
+    const name = row.customer_display_name || row.user_full_name || 'Khách vãng lai';
+    const isGuest = !row.user_id;
+
     return (
+      <div className="flex flex-column gap-1">
+        <span className="font-semibold">{name}</span>
+        {isGuest ? (
+          <Tag value="Khách vãng lai" severity="info" />
+        ) : (
+          <span className="text-xs text-500">{row.user_email}</span>
+        )}
+      </div>
+    );
+  };
+
+  const statusCell = (row: ConversationSession) => {
+    return row.is_active ? <Tag value="Đang hoạt động" severity="success" /> : <Tag value="Đã đóng" severity="warning" />;
+  };
+
+  const actionCell = (row: ConversationSession) => (
+    <div className="flex gap-2">
       <Button
         icon="pi pi-eye"
         rounded
         outlined
         severity="info"
-        onClick={() => loadConversationDetail(rowData.session_id)}
-        tooltip="Xem chi tiết"
+        tooltip="Xem hội thoại"
         tooltipOptions={{ position: 'top' }}
+        onClick={() => loadConversationDetail(row)}
       />
-    );
-  };
-
-  const detailHeader = (
-    <div className="flex justify-content-between align-items-center">
-      <h5 className="m-0">Chi tiết tư vấn</h5>
       <Button
-        icon="pi pi-times"
+        icon="pi pi-trash"
         rounded
-        text
+        outlined
         severity="danger"
-        onClick={() => setShowDetailDialog(false)}
+        tooltip="Xóa hội thoại"
+        tooltipOptions={{ position: 'top' }}
+        loading={deletingSessionId === row.session_id}
+        onClick={() => handleDeleteConversation(row)}
       />
     </div>
   );
 
-  if (!role || role !== 'admin') {
+  const supportCell = (row: ConversationSession) => {
+    if (row.human_support_unread_for_admin) {
+      return <Tag value="Cần phản hồi" severity="danger" />;
+    }
+    if (row.human_support_active) {
+      return <Tag value="Đang hỗ trợ" severity="warning" />;
+    }
+    return <Tag value="AI" severity="info" />;
+  };
+
+  const customerMessageDisplayName =
+    selectedConversation?.customer_display_name
+    || selectedConversation?.user_full_name
+    || 'Khách vãng lai';
+
+  if (!roleHydrated) {
+    return (
+      <div className="grid">
+        <div className="col-12">
+          <div className="card">
+            <Skeleton height="420px" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (role !== 'admin') {
     return (
       <div className="grid">
         <div className="col-12">
           <div className="card text-center py-8">
-            <i className="pi pi-lock text-5xl text-400 mb-4"></i>
+            <i className="pi pi-lock text-5xl text-400 mb-4" />
             <h3 className="text-600">Không có quyền truy cập</h3>
             <p className="text-500">Bạn không có quyền xem trang này</p>
           </div>
@@ -316,10 +502,8 @@ const ConsultationsPage = () => {
       <div className="grid">
         <div className="col-12">
           <div className="card">
-            <div className="flex justify-content-between align-items-center mb-4">
-              <h5>Tư vấn bán hàng</h5>
-            </div>
-            <Skeleton height="400px" />
+            <h5 className="mb-4">Tư vấn bán hàng</h5>
+            <Skeleton height="420px" />
           </div>
         </div>
       </div>
@@ -329,191 +513,198 @@ const ConsultationsPage = () => {
   return (
     <div className="grid">
       <Toast ref={toast} />
+      <ConfirmDialog />
 
       <div className="col-12">
         <div className="card">
-          <div className="flex justify-content-between align-items-center mb-4">
-            <h5 className="m-0">Tư vấn bán hàng</h5>
-            <Button
-              icon="pi pi-refresh"
-              rounded
-              outlined
-              onClick={loadConversations}
-              tooltip="Làm mới"
-              tooltipOptions={{ position: 'top' }}
-            />
+          <div className="flex flex-column gap-3 mb-4">
+            <div className="flex justify-content-between align-items-center">
+              <h5 className="m-0">Tư vấn bán hàng Admin</h5>
+              <Button
+                type="button"
+                icon="pi pi-bell"
+                label={supportAlertCount > 0 ? `Yêu cầu tư vấn viên (${supportAlertCount})` : 'Yêu cầu tư vấn viên'}
+                severity={supportAlertCount > 0 ? 'danger' : 'secondary'}
+                outlined={!showOnlySupportAlerts}
+                onClick={() => setShowOnlySupportAlerts((prev) => !prev)}
+                badge={supportAlertCount > 0 ? String(supportAlertCount) : undefined}
+                badgeClassName="p-badge-danger"
+              />
+            </div>
+
+            <div className="grid">
+              <div className="col-12 md:col-4">
+                <label className="block text-sm mb-2">Tìm kiếm theo ID</label>
+                <InputText
+                  value={rawSearchId}
+                  onChange={(e) => setRawSearchId(e.target.value)}
+                  placeholder="Ví dụ: 001 hoặc 000123"
+                  className="w-full"
+                />
+              </div>
+
+              <div className="col-12 md:col-4">
+                <label className="block text-sm mb-2">Tìm theo tên khách hàng</label>
+                <InputText
+                  value={rawSearchCustomer}
+                  onChange={(e) => setRawSearchCustomer(e.target.value)}
+                  placeholder="Ví dụ: Duy Nauy"
+                  className="w-full"
+                />
+              </div>
+
+              <div className="col-12 md:col-4">
+                <label className="block text-sm mb-2">Lọc theo khoảng ngày</label>
+                <div className="grid">
+                  <div className="col-6">
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="w-full p-inputtext p-component"
+                    />
+                  </div>
+                  <div className="col-6">
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="w-full p-inputtext p-component"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-content-between align-items-center">
+              <span className="text-sm text-600">
+                Tổng cộng: {filteredConversations.length} hội thoại
+                {showOnlySupportAlerts ? ' (đang lọc yêu cầu tư vấn viên)' : ''}
+              </span>
+              <div className="flex gap-2">
+                <Button label="Xóa bộ lọc" severity="secondary" outlined onClick={clearFilters} />
+                <Button label="Làm mới" icon="pi pi-refresh" onClick={() => loadConversations(true)} />
+              </div>
+            </div>
           </div>
 
-          {conversations.length === 0 ? (
-            <div className="text-center py-8">
-              <i className="pi pi-comments text-6xl text-400 mb-4"></i>
-              <h3 className="text-600">Chưa có tư vấn nào</h3>
-              <p className="text-500">Các cuộc tư vấn của khách hàng sẽ hiển thị ở đây</p>
-            </div>
-          ) : (
-            <DataTable
-              value={conversations}
-              paginator
-              rows={10}
-              rowsPerPageOptions={[5, 10, 20]}
-              tableStyle={{ minWidth: '50rem' }}
-              className="p-datatable-striped"
-              responsiveLayout="scroll"
-            >
-              <Column
-                field="session_id"
-                header="Mã phiên"
-                style={{ width: '15%' }}
-                body={(row) => <span className="font-mono text-sm">{row.session_id.slice(0, 8)}</span>}
-              />
-              <Column
-                header="Khách hàng"
-                style={{ width: '25%' }}
-                body={userBodyTemplate}
-              />
-              <Column
-                field="title"
-                header="Tiêu đề"
-                style={{ width: '20%' }}
-              />
-              <Column
-                header="Tin nhắn"
-                style={{ width: '10%' }}
-                body={messageCountTemplate}
-                align="center"
-              />
-              <Column
-                header="Trạng thái"
-                style={{ width: '15%' }}
-                body={statusBodyTemplate}
-              />
-              <Column
-                header="Cập nhật"
-                style={{ width: '20%' }}
-                body={dateBodyTemplate}
-              />
-              <Column
-                header="Hành động"
-                style={{ width: '5%' }}
-                body={actionBodyTemplate}
-              />
-            </DataTable>
-          )}
+          <DataTable
+            value={filteredConversations}
+            paginator
+            rows={10}
+            rowsPerPageOptions={[10, 20, 50]}
+            responsiveLayout="scroll"
+            tableStyle={{ minWidth: '64rem' }}
+            emptyMessage="Không có hội thoại phù hợp"
+          >
+            <Column
+              header="ID"
+              style={{ width: '10%' }}
+              body={(row: ConversationSession) => <span className="font-semibold">{String(row.id).padStart(3, '0')}</span>}
+            />
+            <Column header="Khách hàng" style={{ width: '28%' }} body={customerCell} />
+            <Column
+              header="Mã phiên"
+              style={{ width: '20%' }}
+              body={(row: ConversationSession) => <span className="font-medium">{getDisplaySessionCode(row)}</span>}
+            />
+            <Column
+              header="Ngày tạo"
+              style={{ width: '14%' }}
+              body={(row: ConversationSession) => new Date(row.created_at).toLocaleDateString('vi-VN')}
+            />
+            <Column
+              header="Tin nhắn"
+              style={{ width: '10%' }}
+              body={(row: ConversationSession) => row.message_count || 0}
+            />
+            <Column header="Hỗ trợ" style={{ width: '12%' }} body={supportCell} />
+            <Column header="Trạng thái" style={{ width: '13%' }} body={statusCell} />
+            <Column header="Hành động" style={{ width: '15%' }} body={actionCell} />
+          </DataTable>
         </div>
       </div>
 
-      {/* Detail Dialog */}
       <Dialog
         visible={showDetailDialog}
-        onHide={() => setShowDetailDialog(false)}
-        header={detailHeader}
+        onHide={() => {
+          setShowDetailDialog(false);
+          setAdminReply('');
+          setDetailHumanSupportActive(false);
+        }}
+        header={`Hội thoại #${selectedConversation ? String(selectedConversation.id).padStart(3, '0') : ''}`}
         modal
         style={{ width: '90vw', maxWidth: '900px' }}
-        className="p-dialog-maximizable"
       >
-        {selectedConversation && (
-          <div className="flex flex-column gap-4" style={{ height: '600px' }}>
-            {/* User Info */}
-            <div className="surface-100 p-3 border-round">
-              <div className="grid">
-                <div className="col-12 md:col-6">
-                  <div className="text-sm text-500 mb-1">Khách hàng</div>
-                  {selectedConversation.user_id ? (
-                    <>
-                      <div className="font-semibold">{selectedConversation.user_full_name}</div>
-                      <div className="text-sm">{selectedConversation.user_email}</div>
-                    </>
-                  ) : (
-                    <div className="text-sm text-600">Khách vãng lai (không đăng nhập)</div>
-                  )}
-                </div>
-                <div className="col-12 md:col-6">
-                  <div className="text-sm text-500 mb-1">Thời gian</div>
-                  <div className="font-semibold">{new Date(selectedConversation.created_at).toLocaleString('vi-VN')}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div
-              className="flex-1 overflow-y-auto border-1 surface-border border-round p-4"
-              style={{ backgroundColor: '#f8f9fa' }}
-            >
-              <div className="flex flex-column gap-3">
-                {selectedConversation.messages && selectedConversation.messages.length > 0 ? (
-                  selectedConversation.messages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex ${msg.role === 'admin' || msg.role === 'assistant' ? 'justify-content-end' : 'justify-content-start'}`}
-                    >
-                      <div
-                        className="p-3 border-round max-w-30rem text-sm"
-                        style={{
-                          backgroundColor:
-                            msg.role === 'assistant'
-                              ? '#e3f2fd'
-                              : msg.role === 'admin'
-                              ? '#fff3e0'
-                              : '#f0f0f0'
-                        }}
-                      >
-                        <div className="text-xs text-600 mb-2 font-semibold">
-                          {msg.role === 'user' && '👤 Khách hàng'}
-                          {msg.role === 'assistant' && '🤖 AI'}
-                          {msg.role === 'admin' && '👨‍💼 Admin'}
-                        </div>
-                        <div className="text-900 line-height-2">{msg.content}</div>
-                        {msg.timestamp && (
-                          <div className="text-xs text-500 mt-2">
-                            {new Date(msg.timestamp).toLocaleTimeString('vi-VN')}
-                          </div>
-                        )}
-                      </div>
+        <div className="flex flex-column gap-3">
+          <div style={{ maxHeight: '55vh', overflowY: 'auto' }} className="flex flex-column gap-3">
+            {selectedMessages.length > 0 ? (
+              selectedMessages.map((msg, idx) => (
+                <div
+                  key={`${idx}-${msg.timestamp || ''}`}
+                  className={`flex ${msg.role === 'user' ? 'justify-content-start' : 'justify-content-end'}`}
+                >
+                  <div
+                    className={`p-3 border-round border-1 w-full md:w-9 ${
+                      msg.role === 'user'
+                        ? 'surface-100 border-300'
+                        : msg.role === 'admin'
+                          ? 'surface-0 border-blue-200'
+                          : 'surface-0 border-purple-200'
+                    }`}
+                  >
+                    <div className="text-xs text-600 mb-2 font-semibold">
+                      {msg.role === 'user' ? customerMessageDisplayName : msg.role === 'assistant' ? 'AI' : 'Admin'}
                     </div>
-                  ))
-                ) : (
-                  <div className="text-center text-500 py-4">
-                    <i className="pi pi-comments text-3xl text-400 mb-3 block"></i>
-                    Chưa có tin nhắn nào
+                    <div className="line-height-3">{msg.content}</div>
+                    {msg.timestamp && (
+                      <div className="text-xs text-500 mt-2">{new Date(msg.timestamp).toLocaleString('vi-VN')}</div>
+                    )}
                   </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </div>
-
-            {/* Admin Reply */}
-            {selectedConversation.is_active && (
-              <div className="flex flex-column gap-2 surface-100 p-3 border-round border-top-1 surface-border">
-                <label className="text-sm font-semibold text-600">Trả lời từ Admin</label>
-                <InputTextarea
-                  value={adminReply}
-                  onChange={(e) => setAdminReply(e.target.value)}
-                  placeholder="Nhập trả lời của bạn..."
-                  rows={3}
-                  className="w-full"
-                />
-                <div className="flex gap-2 justify-content-end">
-                  <Button
-                    label="Hủy"
-                    severity="secondary"
-                    outlined
-                    onClick={() => setAdminReply('')}
-                    disabled={replying}
-                    size="small"
-                  />
-                  <Button
-                    label="Gửi trả lời"
-                    icon="pi pi-send"
-                    onClick={handleSendReply}
-                    loading={replying}
-                    disabled={!adminReply.trim() || replying}
-                    size="small"
-                  />
                 </div>
-              </div>
+              ))
+            ) : (
+              <div className="text-center text-500 py-4">Chưa có tin nhắn nào</div>
             )}
           </div>
-        )}
+
+          <div className="surface-50 p-3 border-round border-1 border-200">
+            <div className="flex justify-content-between align-items-center mb-2">
+              <label className="block text-sm font-medium m-0">Trả lời khách hàng với vai trò Admin</label>
+              {detailHumanSupportActive ? (
+                <Button
+                  label="Bật lại AI"
+                  icon="pi pi-refresh"
+                  severity="warning"
+                  outlined
+                  loading={resumingAI}
+                  onClick={handleResumeAI}
+                />
+              ) : (
+                <Tag value="AI đang hoạt động" severity="success" />
+              )}
+            </div>
+            <div className="flex flex-column gap-2">
+              <textarea
+                value={adminReply}
+                onChange={(e) => setAdminReply(e.target.value)}
+                placeholder="Nhập nội dung phản hồi cho khách hàng..."
+                rows={3}
+                className="w-full p-inputtext p-component"
+                disabled={sendingAdminReply}
+              />
+              <div className="flex justify-content-end">
+                <Button
+                  label="Gửi phản hồi"
+                  icon="pi pi-send"
+                  onClick={sendAdminReply}
+                  loading={sendingAdminReply}
+                  disabled={!adminReply.trim() || sendingAdminReply}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       </Dialog>
     </div>
   );
