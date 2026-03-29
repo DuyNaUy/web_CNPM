@@ -1,0 +1,32 @@
+@startuml
+title Sequence Diagram - Sửa tài khoản
+
+actor Admin
+boundary ": User UI" as UI
+control ": User Controller" as C
+entity ": User Entity" as E
+
+== Sửa tài khoản ==
+Admin -> UI: Chọn tài khoản cần chỉnh sửa
+UI -> C: Yêu cầu hiển thị thông tin chi tiết
+C -> E: getUserData(userID: int): User
+E --> C: return User
+C --> UI: Trả thông tin chi tiết
+UI --> Admin: Hiển thị thông tin chi tiết
+
+== Cập nhật thông tin ==
+Admin -> UI: Nhập thông tin mới và nhấn "Lưu"
+UI -> C: Gửi yêu cầu cập nhật
+C -> E: validateAndUpdateUser(user: User): UpdateResult
+
+alt update success
+    E --> C: UpdateResult { success: true }
+    C --> UI: Thông báo thành công
+    UI --> Admin: Hiển thị thành công
+else validation failed
+    E --> C: UpdateResult { success: false, errors: [...] }
+    C --> UI: Hiển thị lỗi
+    UI --> Admin: Thông báo lỗi
+end
+
+@enduml

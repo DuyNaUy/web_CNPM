@@ -22,14 +22,14 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
         menuHoverActive: false
     });
 
-    // Keep initial role deterministic to avoid hydration mismatch.
+    // role can be 'admin' or 'customer'. Load from localStorage if available.
     const [role, setRole] = useState<'admin' | 'customer'>('customer');
     const [roleHydrated, setRoleHydrated] = useState(false);
     
     // Cart count state for real-time topbar updates
     const [cartCount, setCartCount] = useState(0);
 
-    // Load role from localStorage on mount (source of truth after hydration)
+    // Load role from localStorage on mount
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const storedUser = localStorage.getItem('user');
@@ -79,8 +79,8 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
         onMenuToggle,
         showProfileSidebar,
         role,
-        setRole,
         roleHydrated,
+        setRole,
         cartCount,
         setCartCount
     };

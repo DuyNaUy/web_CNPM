@@ -970,8 +970,47 @@ export default function AIAgentChat({
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [aiPaused, setAiPaused] = useState(false);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+  const previousMessageCountRef = useRef(0);
+  const disableAiAuthRef = useRef(false);
   const router = useRouter();
+
+  const fetchAiEndpoint = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
+    const requestHeaders: any = {
+      ...((init?.headers as any) || {}),
+    };
+
+    // Endpoint AI hiện cho phép anonymous, nên mặc định KHÔNG gửi Authorization
+    // để tránh 401 khi local token đã hết hạn.
+    if (!disableAiAuthRef.current && requestHeaders.Authorization) {
+      delete requestHeaders.Authorization;
+    }
+
+    let response = await fetch(url, {
+      ...init,
+      headers: requestHeaders,
+    });
+
+    // Trường hợp hiếm: request vẫn còn Authorization từ nơi khác, retry không auth.
+    if (response.status === 401 && requestHeaders.Authorization && !disableAiAuthRef.current) {
+      console.warn('[AIAgentChat] AI endpoint got 401, disable auth and retry without token...');
+      disableAiAuthRef.current = true;
+
+      const retryHeaders: any = {
+        ...requestHeaders,
+      };
+      delete retryHeaders.Authorization;
+
+      response = await fetch(url, {
+        ...init,
+        headers: retryHeaders,
+      });
+    }
+
+    return response;
+  }, []);
 
   // Helper function to sort and filter products by relevance and sales
   const sortProductsByRelevance = (products: Product[]): Product[] => {
@@ -993,25 +1032,35 @@ export default function AIAgentChat({
     return sorted.slice(0, 5);
   };
 
-  // Scroll to bottom when messages change
+  const isUserNearBottom = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return true;
+
+    const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distanceToBottom <= 120;
+  }, []);
+
+  const handleMessagesScroll = () => {
+    shouldAutoScrollRef.current = isUserNearBottom();
+  };
+
+  // Chỉ auto-scroll khi có tin nhắn mới và user đang ở gần cuối danh sách.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    const hasNewMessage = messages.length > previousMessageCountRef.current;
+    if (hasNewMessage && shouldAutoScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    previousMessageCountRef.current = messages.length;
+  }, [messages.length]);
 
   const loadConversationHistory = useCallback(async () => {
     if (!conversationId) return;
 
     try {
-      const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const headers: any = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const response = await fetch(
+      const response = await fetchAiEndpoint(
         `${apiUrl}/api/ai/conversations/${conversationId}/get_history/`,
-        { headers }
+        {}
       );
 
       if (response.ok) {
@@ -1022,7 +1071,7 @@ export default function AIAgentChat({
     } catch (error) {
       console.error('Failed to load conversation history:', error);
     }
-  }, [conversationId]);
+  }, [conversationId, fetchAiEndpoint]);
 
   // Load conversation history on mount
   useEffect(() => {
@@ -1043,6 +1092,8 @@ export default function AIAgentChat({
   const sendMessage = async () => {
     if (!inputValue.trim() || !conversationId) return;
 
+    shouldAutoScrollRef.current = true;
+
     const userMessage: Message = {
       role: 'user',
       content: inputValue,
@@ -1054,20 +1105,14 @@ export default function AIAgentChat({
     setIsLoading(true);
 
     try {
-      const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const headers: any = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const response = await fetch(
+      const response = await fetchAiEndpoint(
         `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
         {
           method: 'POST',
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({
             message: userMessage.content,
           }),
@@ -1135,26 +1180,22 @@ export default function AIAgentChat({
   const handleFAQClick = (faq: FAQItem) => {
     if (!conversationId) return;
 
+    shouldAutoScrollRef.current = true;
+
     if (faq.id === 'human-support') {
       setInputValue('');
       setIsLoading(true);
 
       (async () => {
         try {
-          const token = localStorage.getItem('access_token');
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-          const headers: any = {
-            'Content-Type': 'application/json',
-          };
-          if (token) {
-            headers.Authorization = `Bearer ${token}`;
-          }
-
-          const response = await fetch(
+          const response = await fetchAiEndpoint(
             `${apiUrl}/api/ai/conversations/${conversationId}/request_human_support/`,
             {
               method: 'POST',
-              headers,
+              headers: {
+                'Content-Type': 'application/json',
+              },
             }
           );
 
@@ -1164,11 +1205,13 @@ export default function AIAgentChat({
             await loadConversationHistory();
           } else {
             // Fallback: gửi tin nhắn thường để backend tự nhận diện yêu cầu tư vấn viên.
-            const fallbackResponse = await fetch(
+            const fallbackResponse = await fetchAiEndpoint(
               `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
               {
                 method: 'POST',
-                headers,
+                headers: {
+                  'Content-Type': 'application/json',
+                },
                 body: JSON.stringify({ message: faq.question }),
               }
             );
@@ -1218,20 +1261,14 @@ export default function AIAgentChat({
 
       (async () => {
         try {
-          const token = localStorage.getItem('access_token');
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-          const headers: any = {
-            'Content-Type': 'application/json',
-          };
-          if (token) {
-            headers.Authorization = `Bearer ${token}`;
-          }
-
-          const response = await fetch(
+          const response = await fetchAiEndpoint(
             `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
             {
               method: 'POST',
-              headers,
+              headers: {
+                'Content-Type': 'application/json',
+              },
               body: JSON.stringify({
                 message: faq.question,
               }),
@@ -1277,20 +1314,14 @@ export default function AIAgentChat({
 
     setIsLoading(true);
     try {
-      const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const headers: any = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const response = await fetch(
+      const response = await fetchAiEndpoint(
         `${apiUrl}/api/ai/conversations/${conversationId}/customer_resume_ai/`,
         {
           method: 'POST',
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+          },
         }
       );
 
@@ -1298,47 +1329,31 @@ export default function AIAgentChat({
         setAiPaused(false);
         await loadConversationHistory();
       } else {
-        // Retry 1: thử lại không kèm Authorization để tránh lỗi token cũ.
-        const retryResponse = await fetch(
-          `${apiUrl}/api/ai/conversations/${conversationId}/customer_resume_ai/`,
+        // Fallback: gửi intent, backend sẽ tự chuyển về AI mode.
+        const fallbackResponse = await fetchAiEndpoint(
+          `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
+            body: JSON.stringify({ message: 'Chat với AI' }),
           }
         );
 
-        if (retryResponse.ok) {
-          setAiPaused(false);
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          setAiPaused(Boolean(fallbackData.ai_paused));
           await loadConversationHistory();
         } else {
-          // Retry 2: fallback gửi intent, backend sẽ tự chuyển về AI mode.
-          const fallbackResponse = await fetch(
-            `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
+          setMessages((prev) => [
+            ...prev,
             {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ message: 'Chat với AI' }),
-            }
-          );
-
-          if (fallbackResponse.ok) {
-            const fallbackData = await fallbackResponse.json();
-            setAiPaused(Boolean(fallbackData.ai_paused));
-            await loadConversationHistory();
-          } else {
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: 'assistant',
-                content: 'Không thể chuyển sang chế độ Chat với AI lúc này. Vui lòng thử lại.',
-                timestamp: new Date().toISOString(),
-              },
-            ]);
-          }
+              role: 'assistant',
+              content: 'Không thể chuyển sang chế độ Chat với AI lúc này. Vui lòng thử lại.',
+              timestamp: new Date().toISOString(),
+            },
+          ]);
         }
       }
     } catch (error) {
@@ -1395,7 +1410,11 @@ export default function AIAgentChat({
       </div>
 
       {/* Messages Area */}
-      <div className={styles.messagesContainer}>
+      <div
+        ref={messagesContainerRef}
+        className={styles.messagesContainer}
+        onScroll={handleMessagesScroll}
+      >
         {messages.length === 0 ? (
           <div className={styles.emptyState}>
             <div className={styles.emptyIcon}>🧸</div>

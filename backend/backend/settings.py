@@ -241,12 +241,8 @@ MOMO_PARTNER_CODE = 'MOMO'
 MOMO_ACCESS_KEY = 'F8BBA842ECF85'
 MOMO_SECRET_KEY = 'K951B6PE1waDMi640xX08PD3vg6EkVlz'
 MOMO_ENDPOINT = 'https://test-payment.momo.vn/v2/gateway/api/create'
-
-# ⚠️ IMPORTANT: Use IP address for phone testing, not localhost!
-# Replace 192.168.1.11 with your PC's IPv4 address
-# To find IP: Windows --> ipconfig --> IPv4 Address
-MOMO_REDIRECT_URL = 'http://192.168.1.11:3000/customer/payment/result'
-MOMO_IPN_URL = 'http://192.168.1.11:8000/api/orders/momo-callback/'
+MOMO_REDIRECT_URL = 'http://localhost:3000/customer/payment/result'
+MOMO_IPN_URL = 'http://localhost:8000/api/orders/momo-callback/'
 
 # AI Configuration
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')

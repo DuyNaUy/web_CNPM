@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AIAgentChat from './AIAgentChat';
 import OrderPreview from './OrderPreview';
 import styles from './AIAgentConsole.module.css';
@@ -23,29 +23,56 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
   const [showOrderPreview, setShowOrderPreview] = useState(false);
   const [selectedRecommendations, setSelectedRecommendations] = useState<Recommendation[]>([]);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const disableAiAuthRef = useRef(false);
+
+  const fetchAiEndpoint = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
+    const token = localStorage.getItem('access_token');
+    const headers: any = {
+      ...((init?.headers as any) || {}),
+    };
+
+    if (token && !disableAiAuthRef.current && !headers.Authorization) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    let response = await fetch(url, {
+      ...init,
+      headers,
+    });
+
+    if (response.status === 401 && token && !disableAiAuthRef.current) {
+      console.warn('[AIAgentConsole] AI endpoint got 401 with token, disable auth and retry without token...');
+      disableAiAuthRef.current = true;
+      const retryHeaders: any = { ...headers };
+      delete retryHeaders.Authorization;
+      response = await fetch(url, {
+        ...init,
+        headers: retryHeaders,
+      });
+    }
+
+    return response;
+  }, []);
 
   const handleStartConversation = useCallback(async () => {
     try {
-      const token = localStorage.getItem('access_token');
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const headers: any = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-      const response = await fetch(`${apiUrl}/api/ai/conversations/start_conversation/`, {
+      const response = await fetchAiEndpoint(`${apiUrl}/api/ai/conversations/start_conversation/`, {
         method: 'POST',
-        headers,
+        headers: {},
       });
 
       if (response.ok) {
         const data = await response.json();
         setConversationId(data.session_id);
         localStorage.setItem('teddy_ai_session_id', data.session_id);
+      } else {
+        console.error('[AIAgentConsole] start_conversation failed with status:', response.status);
       }
     } catch (error) {
       console.error('Failed to start conversation:', error);
     }
-  }, []);
+  }, [fetchAiEndpoint]);
 
   const handleNewConversation = () => {
     if (window.confirm('Bạn có chắc muốn bắt đầu cuộc trò chuyện mới? Lịch sử hiện tại sẽ được thay thế.')) {

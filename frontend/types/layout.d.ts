@@ -47,9 +47,9 @@ export interface LayoutContextProps {
     showProfileSidebar: () => void;
     /** role of current user view - 'admin' or 'customer' */
     role: 'admin' | 'customer';
-    setRole: Dispatch<SetStateAction<'admin' | 'customer'>>;
-    /** true when role has been loaded from localStorage on client */
+    /** true after role is loaded from localStorage (or determined absent) */
     roleHydrated: boolean;
+    setRole: Dispatch<SetStateAction<'admin' | 'customer'>>;
     /** Cart item count for topbar badge - synced across pages */
     cartCount: number;
     setCartCount: Dispatch<SetStateAction<number>>;

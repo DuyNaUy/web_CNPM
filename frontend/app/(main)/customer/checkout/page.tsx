@@ -30,8 +30,6 @@ const CheckoutPage = () => {
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
     const [isBuyNow, setIsBuyNow] = useState(false);
     const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [isChecking, setIsChecking] = useState(true);
 
     const [formData, setFormData] = useState({
         fullName: '',
@@ -47,25 +45,6 @@ const CheckoutPage = () => {
 
     // Load cart items on mount
     useEffect(() => {
-        // Check if user is authenticated
-        const user = getStoredUser();
-        const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-        
-        if (!user || !token) {
-            setIsChecking(false);
-            toast.current?.show({
-                severity: 'warn',
-                summary: 'Yêu cầu đăng nhập',
-                detail: 'Bạn cần đăng nhập để thanh toán. Vui lòng đăng nhập hoặc đăng ký tài khoản.',
-                life: 3000
-            });
-            setTimeout(() => {
-                router.push('/auth/login');
-            }, 3000);
-            return;
-        }
-        
-        setIsAuthenticated(true);
         // First check for selectedCheckoutItems (from cart page)
         const selectedCheckoutItems = sessionStorage.getItem('selectedCheckoutItems');
         if (selectedCheckoutItems) {
@@ -128,7 +107,7 @@ const CheckoutPage = () => {
                 }
             }
         }
-    }, [router]);
+    }, []);
 
     const calculateSubtotal = () => {
         return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -181,22 +160,6 @@ const CheckoutPage = () => {
 
         try {
             const user = getStoredUser();
-            const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-            
-            // Check if user is still authenticated
-            if (!user || !token) {
-                toast.current?.show({
-                    severity: 'error',
-                    summary: 'Phiên đăng nhập hết hạn',
-                    detail: 'Vui lòng đăng nhập lại để tiếp tục',
-                    life: 3000
-                });
-                setTimeout(() => {
-                    router.push('/auth/login');
-                }, 3000);
-                return;
-            }
-            
             // Transform items to include price for backend
             const itemsForOrder = cartItems.map(item => ({
                 id: item.id,
@@ -274,48 +237,20 @@ const CheckoutPage = () => {
                     router.push('/customer/orders');
                 }, 3000);
             } else {
-                // Check if error is due to authentication
-                if (response?.code === 'token_not_valid' || response?.code === 'authentication_failed') {
-                    toast.current?.show({
-                        severity: 'error',
-                        summary: 'Phiên đăng nhập hết hạn',
-                        detail: 'Vui lòng đăng nhập lại để tiếp tục',
-                        life: 3000
-                    });
-                    setTimeout(() => {
-                        router.push('/auth/login');
-                    }, 3000);
-                } else {
-                    toast.current?.show({
-                        severity: 'error',
-                        summary: 'Lỗi',
-                        detail: response?.error || response?.detail || 'Không thể tạo đơn hàng',
-                        life: 3000
-                    });
-                }
-            }
-        } catch (error: any) {
-            console.error('Checkout error:', error);
-            
-            // Check if error is due to authentication
-            if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-                toast.current?.show({
-                    severity: 'error',
-                    summary: 'Phiên đăng nhập hết hạn',
-                    detail: 'Vui lòng đăng nhập lại để tiếp tục',
-                    life: 3000
-                });
-                setTimeout(() => {
-                    router.push('/auth/login');
-                }, 3000);
-            } else {
                 toast.current?.show({
                     severity: 'error',
                     summary: 'Lỗi',
-                    detail: error.message || 'Có lỗi xảy ra khi đặt hàng',
+                    detail: response?.error || 'Không thể tạo đơn hàng',
                     life: 3000
                 });
             }
+        } catch (error: any) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Lỗi',
+                detail: error.message || 'Có lỗi xảy ra khi đặt hàng',
+                life: 3000
+            });
         }
     };
 
@@ -323,24 +258,7 @@ const CheckoutPage = () => {
         <div className="grid">
             <Toast ref={toast} />
 
-            {!isAuthenticated && isChecking ? (
-                <div className="col-12">
-                    <div className="card text-center">
-                        <i className="pi pi-spin pi-spinner text-6xl text-400 mb-4"></i>
-                        <h3 className="text-900 mb-2">Đang kiểm tra thông tin...</h3>
-                    </div>
-                </div>
-            ) : !isAuthenticated ? (
-                <div className="col-12">
-                    <div className="card text-center">
-                        <i className="pi pi-lock text-6xl text-red-500 mb-4"></i>
-                        <h3 className="text-900 mb-2">Vui lòng đăng nhập để tiếp tục</h3>
-                        <p className="text-600 mb-4">Bạn cần có tài khoản để thanh toán online</p>
-                        <Button label="Đăng nhập" icon="pi pi-sign-in" onClick={() => router.push('/auth/login')} className="mr-2" />
-                        <Button label="Đăng ký" icon="pi pi-user-plus" onClick={() => router.push('/auth/register')} severity="info" />
-                    </div>
-                </div>
-            ) : cartItems.length === 0 ? (
+            {cartItems.length === 0 ? (
                 <div className="col-12">
                     <div className="card text-center">
                         <i className="pi pi-shopping-cart text-6xl text-400 mb-4"></i>

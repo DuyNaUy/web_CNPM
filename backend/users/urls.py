@@ -5,8 +5,7 @@ from .views import (
     UserLoginView,
     UserLogoutView,
     UserProfileView,
-    UserManagementViewSet,
-    TokenRefreshView
+    UserManagementViewSet
 )
 
 app_name = 'users'
@@ -18,7 +17,6 @@ urlpatterns = [
     path('register/', UserRegistrationView.as_view(), name='register'),
     path('login/', UserLoginView.as_view(), name='login'),
     path('logout/', UserLogoutView.as_view(), name='logout'),
-    path('refresh/', TokenRefreshView.as_view(), name='refresh'),
     path('profile/', UserProfileView.as_view(), name='profile'),
     path('', include(router.urls)),
 ]

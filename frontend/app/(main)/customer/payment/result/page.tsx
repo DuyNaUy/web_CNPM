@@ -117,7 +117,7 @@ const PaymentResultPage = () => {
         };
 
         checkPaymentStatus();
-    }, [searchParams, setCartCount]);
+    }, [searchParams]);
 
     if (loading) {
         return (

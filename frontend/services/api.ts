@@ -38,46 +38,9 @@ export const setStoredUser = (user: any) => {
     localStorage.setItem('user', JSON.stringify(user));
 };
 
-// Helper function to refresh access token
-const refreshAccessToken = async () => {
-    try {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (!refreshToken) {
-            removeAuthTokens();
-            return null;
-        }
-
-        const response = await fetch(`${API_BASE_URL}/auth/refresh/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ refresh: refreshToken })
-        });
-
-        if (!response.ok) {
-            removeAuthTokens();
-            return null;
-        }
-
-        const data = await response.json();
-        if (data.access) {
-            localStorage.setItem('access_token', data.access);
-            return data.access;
-        }
-
-        removeAuthTokens();
-        return null;
-    } catch (error) {
-        console.error('Token refresh error:', error);
-        removeAuthTokens();
-        return null;
-    }
-};
-
 // API Request wrapper
-const apiRequest = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
-    let token = getAuthToken();
+const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
+    const token = getAuthToken();
 
     const headers: Record<string, string> = {
         ...(options.headers as Record<string, string>)
@@ -92,7 +55,7 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}): Promise<
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    let config: RequestInit = {
+    const config: RequestInit = {
         ...options,
         headers
     };
@@ -112,51 +75,18 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}): Promise<
 
         console.log(`API Response (${response.status}):`, data);
 
-        // Handle 401 Unauthorized - try to refresh token and retry
-        if (response.status === 401 && token) {
-            console.warn('[API] Got 401 - attempting to refresh token...');
-            const newToken = await refreshAccessToken();
-            
-            if (newToken) {
-                console.log('[API] Token refreshed successfully, retrying request...');
-                // Retry with new token
-                token = newToken;
-                config = {
-                    ...options,
-                    headers: {
-                        ...(options.headers as Record<string, string>),
-                        'Content-Type': headers['Content-Type'] || 'application/json',
-                        'Authorization': `Bearer ${newToken}`
-                    }
-                };
-                
-                response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-                try {
-                    data = await response.json();
-                } catch (parseError) {
-                    console.error('JSON Parse Error on retry:', parseError);
-                    throw new Error(`Server returned invalid JSON on retry. Status: ${response.status}`);
-                }
-                console.log(`API Response after retry (${response.status}):`, data);
-            } else {
-                console.warn('[API] Token refresh failed - returning 401 response');
-                // Token refresh failed, return the 401 response
-                if (data && typeof data === 'object') {
-                    console.error('API Error Response:', data);
-                    return data;
-                }
-            }
-        }
-        
-        // If 401 and we have a token and this is a GET request (deprecated - keeping for backward compat)
+        // If 401 and we have a token and this is a GET request, retry without token
         if (response.status === 401 && token && (!config.method || config.method === 'GET')) {
             console.warn('[API] Got 401 with token for GET request, retrying without token...');
             // Remove authorization header and retry
-            const { Authorization: _authorization, ...headersWithoutAuth } = headers as Record<string, string>;
             const configWithoutAuth = {
                 ...config,
-                headers: headersWithoutAuth
+                headers: {
+                    ...headers,
+                    Authorization: undefined
+                }
             };
+            delete configWithoutAuth.headers['Authorization'];
             
             response = await fetch(`${API_BASE_URL}${endpoint}`, configWithoutAuth);
             try {

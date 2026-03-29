@@ -10,7 +10,7 @@ import { Toast } from 'primereact/toast';
 import { Sidebar } from 'primereact/sidebar';
 import { Skeleton } from 'primereact/skeleton';
 import { Paginator } from 'primereact/paginator';
-import React, { useRef, useState, useEffect, useContext, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useContext } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { classNames } from 'primereact/utils';
 import { productAPI, categoryAPI, cartAPI, getStoredUser } from '@/services/api';
@@ -135,7 +135,20 @@ const ProductsPage = () => {
         }
     };
 
-    const filterAndSortProducts = useCallback(() => {
+    // Filter và sort products khi các điều kiện thay đổi
+    // Keep dependencies minimal on purpose; filterAndSortProducts is stable in this component
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        filterAndSortProducts();
+    }, [selectedCategory, searchTerm, sortKey, allProducts]);
+
+    // Cập nhật displayed products khi filteredProducts hoặc pagination thay đổi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        updateDisplayedProducts();
+    }, [filteredProducts, first, rowsPerPage]);
+
+    const filterAndSortProducts = () => {
         let filtered = [...allProducts];
 
         // Filter by category
@@ -171,23 +184,13 @@ const ProductsPage = () => {
 
         setFilteredProducts(filtered);
         setFirst(0); // Reset về trang đầu khi filter thay đổi
-    }, [allProducts, searchTerm, selectedCategory, sortKey]);
+    };
 
-    const updateDisplayedProducts = useCallback(() => {
+    const updateDisplayedProducts = () => {
         const startIndex = first;
         const endIndex = first + rowsPerPage;
         setDisplayedProducts(filteredProducts.slice(startIndex, endIndex));
-    }, [filteredProducts, first, rowsPerPage]);
-
-    // Filter và sort products khi các điều kiện thay đổi
-    useEffect(() => {
-        filterAndSortProducts();
-    }, [filterAndSortProducts]);
-
-    // Cập nhật displayed products khi filteredProducts hoặc pagination thay đổi
-    useEffect(() => {
-        updateDisplayedProducts();
-    }, [updateDisplayedProducts]);
+    };
 
     const addToCart = async (product: Product) => {
         const selectedSize = selectedSizes[product.id];

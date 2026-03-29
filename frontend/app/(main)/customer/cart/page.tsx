@@ -6,7 +6,7 @@ import { Column } from 'primereact/column';
 import { InputNumber } from 'primereact/inputnumber';
 import { Toast } from 'primereact/toast';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
-import React, { useRef, useState, useEffect, useContext, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useContext } from 'react';
 import Link from 'next/link';
 import { cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
@@ -46,7 +46,11 @@ const CartPage = () => {
     const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
     const toast = useRef<Toast>(null);
 
-    const loadCart = useCallback(async () => {
+    useEffect(() => {
+        loadCart();
+    }, []);
+
+    const loadCart = async () => {
         setLoading(true);
         try {
             const user = getStoredUser();
@@ -124,11 +128,7 @@ const CartPage = () => {
         } finally {
             setLoading(false);
         }
-    }, [setCartCount]);
-
-    useEffect(() => {
-        void loadCart();
-    }, [loadCart]);
+    };
 
     const updateQuantity = async (itemId: number, newQuantity: number) => {
         if (newQuantity === 0) {
