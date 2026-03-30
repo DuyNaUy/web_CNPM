@@ -29,22 +29,70 @@ export const LayoutProvider = ({ children }: ChildContainerProps) => {
     // Cart count state for real-time topbar updates
     const [cartCount, setCartCount] = useState(0);
 
-    // Load role from localStorage on mount
+    // Load role from localStorage/token on mount.
+    // If local user data is missing but token still exists, fetch profile to avoid
+    // defaulting admin sessions to customer after browser refresh.
     useEffect(() => {
-        if (typeof window !== 'undefined') {
+        if (typeof window === 'undefined') return;
+
+        const hydrateRole = async () => {
+            const token = localStorage.getItem('access_token');
             const storedUser = localStorage.getItem('user');
-            if (storedUser) {
+
+            if (storedUser && token) {
                 try {
-                    const user = JSON.parse(storedUser);
-                    if (user.role === 'admin' || user.role === 'customer') {
-                        setRole(user.role);
+                    const parsedUser = JSON.parse(storedUser);
+                    if (parsedUser.role === 'admin' || parsedUser.role === 'customer') {
+                        setRole(parsedUser.role);
+                        setRoleHydrated(true);
+                        return;
                     }
                 } catch (error) {
                     console.error('Error parsing user from localStorage:', error);
                 }
             }
-            setRoleHydrated(true);
-        }
+
+            if (!token) {
+                setRole('customer');
+                setRoleHydrated(true);
+                return;
+            }
+
+            try {
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const response = await fetch(`${apiUrl}/api/auth/profile/`, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                });
+
+                if (!response.ok) {
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    localStorage.removeItem('user');
+                    setRole('customer');
+                    setRoleHydrated(true);
+                    return;
+                }
+
+                const data = await response.json();
+                const profile = data?.data || data;
+
+                if (profile && (profile.role === 'admin' || profile.role === 'customer')) {
+                    setRole(profile.role);
+                    localStorage.setItem('user', JSON.stringify(profile));
+                } else {
+                    setRole('customer');
+                }
+            } catch (error) {
+                console.error('Error hydrating role from profile API:', error);
+                setRole('customer');
+            } finally {
+                setRoleHydrated(true);
+            }
+        };
+
+        void hydrateRole();
     }, []);
 
     const onMenuToggle = () => {

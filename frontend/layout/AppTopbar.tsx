@@ -175,7 +175,7 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
         <>
             <Toast ref={toast} />
             <div className="layout-topbar">
-                <Link href={role === 'customer' ? '/customer' : '/'} className="layout-topbar-logo">
+                <Link href={role === 'customer' ? '/customer' : '/admin/products'} className="layout-topbar-logo">
                     <img src="/layout/images/logo1.png" width="47.22px" height={'35px'} alt="logo" />
                     <span className="hidden md:inline-block font-bold" style={{ fontSize: '1.2rem', color: role === 'admin' ? '#e91e63' : '#ff69b4' }}>
                         {role === 'admin' ? 'TEDDY SHOP ADMIN' : 'TEDDY SHOP 🧸'}
