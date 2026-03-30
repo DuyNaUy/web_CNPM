@@ -978,14 +978,13 @@ export default function AIAgentChat({
   const router = useRouter();
 
   const fetchAiEndpoint = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
+    const token = localStorage.getItem('access_token');
     const requestHeaders: any = {
       ...((init?.headers as any) || {}),
     };
 
-    // Endpoint AI hiện cho phép anonymous, nên mặc định KHÔNG gửi Authorization
-    // để tránh 401 khi local token đã hết hạn.
-    if (!disableAiAuthRef.current && requestHeaders.Authorization) {
-      delete requestHeaders.Authorization;
+    if (token && !disableAiAuthRef.current && !requestHeaders.Authorization) {
+      requestHeaders.Authorization = `Bearer ${token}`;
     }
 
     let response = await fetch(url, {
@@ -993,8 +992,7 @@ export default function AIAgentChat({
       headers: requestHeaders,
     });
 
-    // Trường hợp hiếm: request vẫn còn Authorization từ nơi khác, retry không auth.
-    if (response.status === 401 && requestHeaders.Authorization && !disableAiAuthRef.current) {
+    if (response.status === 401 && token && !disableAiAuthRef.current) {
       console.warn('[AIAgentChat] AI endpoint got 401, disable auth and retry without token...');
       disableAiAuthRef.current = true;
 

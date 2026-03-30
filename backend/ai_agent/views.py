@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.db.models import Q
+from django.db.models import OuterRef, Subquery
 from django.utils import timezone
 from .models import ConversationSession
 from .serializers import (
@@ -36,6 +37,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
         if self.request.user.is_authenticated:
             if hasattr(self.request.user, 'role') and self.request.user.role == 'admin':
                 queryset = ConversationSession.objects.all().order_by('-updated_at')
+
+                latest_conversation_per_user = ConversationSession.objects.filter(
+                    user_id=OuterRef('user_id')
+                ).order_by('-updated_at').values('id')[:1]
+
+                queryset = queryset.filter(
+                    Q(user__isnull=True) | Q(id=Subquery(latest_conversation_per_user))
+                )
 
                 search_id = (self.request.query_params.get('id') or '').strip()
                 customer_name = (self.request.query_params.get('customer_name') or '').strip()
@@ -117,6 +126,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
         assert self.lookup_field in self.kwargs
         filter_kwargs = {self.lookup_field: self.kwargs[self.lookup_field]}
         obj = queryset.filter(**filter_kwargs).first()
+
+        # Nếu user đã đăng nhập nhưng session hiện đang là khách vãng lai,
+        # tự động gắn phiên này cho user hiện tại để admin thấy đúng thông tin khách hàng.
+        if obj is None and self.request.user.is_authenticated:
+            guest_obj = ConversationSession.objects.filter(user__isnull=True, **filter_kwargs).first()
+            if guest_obj:
+                guest_obj.user = self.request.user
+                guest_obj.save(update_fields=['user', 'updated_at'])
+                obj = guest_obj
         
         # Nếu anonymous user, tìm conversation bất kể user là ai
         if obj is None and not self.request.user.is_authenticated:

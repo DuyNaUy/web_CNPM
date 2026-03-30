@@ -48,6 +48,23 @@ const getLocalDateKey = (isoDate: string): string => {
   return `${year}-${month}-${day}`;
 };
 
+const formatDateTime = (isoDate: string): string => {
+  const d = new Date(isoDate);
+  if (Number.isNaN(d.getTime())) return '-';
+  return d.toLocaleString('vi-VN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+};
+
+const CONVERSATIONS_REFRESH_MS = 1500;
+const DETAIL_REFRESH_MS = 1500;
+
 const ConsultationsPage = () => {
   const router = useRouter();
   const { role, roleHydrated } = useContext(LayoutContext);
@@ -93,7 +110,7 @@ const ConsultationsPage = () => {
 
     const interval = setInterval(() => {
       void loadConversations(false);
-    }, 5000);
+    }, CONVERSATIONS_REFRESH_MS);
 
     return () => clearInterval(interval);
   }, [roleHydrated, role]);
@@ -112,10 +129,28 @@ const ConsultationsPage = () => {
 
     const interval = setInterval(() => {
       void loadConversationDetail(selectedConversation, false);
-    }, 4000);
+    }, DETAIL_REFRESH_MS);
 
     return () => clearInterval(interval);
   }, [showDetailDialog, selectedConversation]);
+
+  useEffect(() => {
+    if (!roleHydrated || role !== 'admin') return;
+
+    const handleVisibilityOrFocus = () => {
+      if (!document.hidden) {
+        void loadConversations(false);
+      }
+    };
+
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+    };
+  }, [roleHydrated, role]);
 
   const loadConversations = async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -609,9 +644,9 @@ const ConsultationsPage = () => {
               body={(row: ConversationSession) => <span className="font-medium">{getDisplaySessionCode(row)}</span>}
             />
             <Column
-              header="Ngày tạo"
+              header="Ngày tạo / cập nhật"
               style={{ width: '14%' }}
-              body={(row: ConversationSession) => new Date(row.created_at).toLocaleDateString('vi-VN')}
+              body={(row: ConversationSession) => formatDateTime(row.updated_at || row.created_at)}
             />
             <Column
               header="Tin nhắn"
