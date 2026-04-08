@@ -151,6 +151,9 @@ class AIRecommendation(models.Model):
     confidence_score = models.FloatField(default=0.5, help_text="Độ tin cậy của đề xuất (0-1)")
     quantity = models.PositiveIntegerField(default=1, help_text="Số lượng được đề xuất")
     is_accepted = models.BooleanField(default=False)
+    is_selected_for_order = models.BooleanField(default=False, help_text='Đánh dấu đề xuất được dùng để tạo đơn hàng')
+    created_order_code = models.CharField(max_length=50, blank=True, null=True, help_text='Mã đơn hàng thật được tạo từ đề xuất')
+    converted_at = models.DateTimeField(blank=True, null=True, help_text='Thời điểm đề xuất được chuyển thành đơn hàng thật')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -161,57 +164,9 @@ class AIRecommendation(models.Model):
     def __str__(self):
         return f"{self.conversation.session_id} - {self.product.name}"
 
-
-class AutomatedOrder(models.Model):
-    """Đơn hàng được tạo tự động từ AI Agent"""
-    STATUS_CHOICES = [
-        ('draft', 'Nháp'),
-        ('confirmed', 'Đã xác nhận'),
-        ('created', 'Tạo đơn hàng'),
-        ('cancelled', 'Đã hủy'),
-    ]
-
-    conversation = models.ForeignKey(ConversationSession, on_delete=models.CASCADE, related_name='automated_orders')
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
-    
-    # Thông tin từ AI
-    suggested_products = models.TextField(help_text="JSON array of suggested products")
-    ai_notes = models.TextField(blank=True, help_text="Ghi chú từ AI về đơn hàng")
-    
-    # Thông tin đơn hàng
-    full_name = models.CharField(max_length=255, blank=True)
-    phone = models.CharField(max_length=20, blank=True)
-    email = models.EmailField(blank=True)
-    address = models.TextField(blank=True)
-    city = models.CharField(max_length=100, blank=True)
-    district = models.CharField(max_length=100, blank=True)
-    
-    # Tính toán
-    estimated_total = models.DecimalField(max_digits=15, decimal_places=0, default=0)
-    shipping_fee = models.DecimalField(max_digits=15, decimal_places=0, default=30000)
-    
-    # Link tới đơn hàng thực tế nếu được tạo
-    created_order_id = models.CharField(max_length=50, blank=True, null=True)
-    
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = 'Đơn hàng tự động AI'
-        verbose_name_plural = 'Đơn hàng tự động AI'
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"AutoOrder-{self.id} ({self.user.username})"
-
-    def get_suggested_products(self):
-        """Lấy danh sách sản phẩm được đề xuất"""
-        try:
-            return json.loads(self.suggested_products) if self.suggested_products else []
-        except json.JSONDecodeError:
-            return []
-
-    def set_suggested_products(self, products_list):
-        """Lưu danh sách sản phẩm dưới dạng JSON"""
-        self.suggested_products = json.dumps(products_list, ensure_ascii=False)
+    def mark_as_order_created(self, order_code: str):
+        """Đánh dấu đề xuất đã được chuyển thành đơn hàng thật."""
+        self.is_selected_for_order = True
+        self.created_order_code = order_code
+        self.converted_at = timezone.now()
+        self.save(update_fields=['is_selected_for_order', 'created_order_code', 'converted_at'])

@@ -14,6 +14,8 @@ class ConversationSessionSerializer(serializers.ModelSerializer):
     customer_display_name = serializers.SerializerMethodField()
     human_support_active = serializers.SerializerMethodField()
     human_support_unread_for_admin = serializers.SerializerMethodField()
+    human_support_queue_position = serializers.SerializerMethodField()
+    human_support_waiting_total = serializers.SerializerMethodField()
     
     class Meta:
         model = ConversationSession
@@ -28,6 +30,8 @@ class ConversationSessionSerializer(serializers.ModelSerializer):
             'message_count',
             'human_support_active',
             'human_support_unread_for_admin',
+            'human_support_queue_position',
+            'human_support_waiting_total',
             'created_at',
             'updated_at',
             'is_active',
@@ -49,6 +53,14 @@ class ConversationSessionSerializer(serializers.ModelSerializer):
     def get_human_support_unread_for_admin(self, obj):
         ctx = obj.get_context()
         return bool((ctx.get('human_support') or {}).get('unread_for_admin'))
+
+    def get_human_support_queue_position(self, obj):
+        queue_map = self.context.get('human_support_queue_map') or {}
+        return queue_map.get(obj.id)
+
+    def get_human_support_waiting_total(self, obj):
+        queue_map = self.context.get('human_support_queue_map') or {}
+        return len(queue_map)
 
 
 class ProductVariantChatbotSerializer(serializers.ModelSerializer):

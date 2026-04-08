@@ -30,6 +30,8 @@ interface ConversationSession {
   message_count?: number;
   human_support_active?: boolean;
   human_support_unread_for_admin?: boolean;
+  human_support_queue_position?: number | null;
+  human_support_waiting_total?: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -289,7 +291,7 @@ const ConsultationsPage = () => {
         toast.current?.show({
           severity: 'error',
           summary: 'Lỗi',
-          detail: data.error || 'Không thể gửi tin nhắn admin',
+          detail: data.message || data.error || 'Không thể gửi tin nhắn admin',
           life: 2500,
         });
         return;
@@ -493,10 +495,12 @@ const ConsultationsPage = () => {
 
   const supportCell = (row: ConversationSession) => {
     if (row.human_support_unread_for_admin) {
-      return <Tag value="Cần phản hồi" severity="danger" />;
+      const position = row.human_support_queue_position;
+      return <Tag value={position ? `Cần phản hồi • #${position}` : 'Cần phản hồi'} severity="danger" />;
     }
     if (row.human_support_active) {
-      return <Tag value="Đang hỗ trợ" severity="warning" />;
+      const position = row.human_support_queue_position;
+      return <Tag value={position ? `Đang hỗ trợ • #${position}` : 'Đang hỗ trợ'} severity="warning" />;
     }
     return <Tag value="AI" severity="info" />;
   };

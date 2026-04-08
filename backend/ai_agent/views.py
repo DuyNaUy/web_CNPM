@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.db.models import Q
 from django.db.models import OuterRef, Subquery
+from django.db.models import Case, When, Value, IntegerField
 from django.utils import timezone
 from .models import ConversationSession
 from .serializers import (
@@ -31,12 +32,13 @@ class ConversationViewSet(viewsets.ModelViewSet):
     serializer_class = ConversationSessionSerializer
     permission_classes = [AllowAny]
     lookup_field = 'session_id'
+    HUMAN_SUPPORT_AVG_MINUTES_PER_SESSION = 3
 
     def get_queryset(self):
         """Lấy conversation của user hoặc anonymous"""
         if self.request.user.is_authenticated:
             if hasattr(self.request.user, 'role') and self.request.user.role == 'admin':
-                queryset = ConversationSession.objects.all().order_by('-updated_at')
+                queryset = ConversationSession.objects.all()
 
                 latest_conversation_per_user = ConversationSession.objects.filter(
                     user_id=OuterRef('user_id')
@@ -60,6 +62,17 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 if created_date:
                     queryset = queryset.filter(created_at__date=created_date)
 
+                queue_map = self._build_human_support_queue_map(queryset)
+                if queue_map:
+                    queue_order = Case(
+                        *[When(id=conversation_id, then=Value(position)) for conversation_id, position in queue_map.items()],
+                        default=Value(999999),
+                        output_field=IntegerField(),
+                    )
+                    queryset = queryset.order_by(queue_order, '-updated_at')
+                else:
+                    queryset = queryset.order_by('-updated_at')
+
                 return queryset
 
             return ConversationSession.objects.filter(user=self.request.user).order_by('-updated_at')
@@ -81,8 +94,59 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return user.is_authenticated and hasattr(user, 'role') and user.role == 'admin'
 
     def _get_human_support_state(self, conversation):
-        ctx = conversation.get_context()
+        ctx = conversation._load_context_dict() if hasattr(conversation, '_load_context_dict') else conversation.get_context()
         return ctx.get('human_support') or {}
+
+    def _parse_iso_datetime(self, value):
+        if not value:
+            return None
+        try:
+            return timezone.datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        except (TypeError, ValueError):
+            return None
+
+    def _build_human_support_queue_map(self, base_queryset=None):
+        queryset = base_queryset if base_queryset is not None else ConversationSession.objects.all()
+        queue_items = []
+        for conversation in queryset:
+            if not conversation.is_active:
+                continue
+            support_state = self._get_human_support_state(conversation)
+            if not support_state.get('active'):
+                continue
+
+            requested_at = self._parse_iso_datetime(support_state.get('requested_at'))
+            if requested_at is None:
+                requested_at = conversation.updated_at
+            queue_items.append((conversation.id, requested_at, conversation.created_at))
+
+        queue_items.sort(key=lambda item: (item[1], item[2], item[0]))
+        return {conversation_id: index + 1 for index, (conversation_id, _, _) in enumerate(queue_items)}
+
+    def _get_queue_position(self, conversation):
+        queue_map = self._build_human_support_queue_map()
+        return queue_map.get(conversation.id)
+
+    def _estimate_wait_minutes(self, queue_position):
+        if not queue_position or queue_position <= 1:
+            return 0
+        return (queue_position - 1) * self.HUMAN_SUPPORT_AVG_MINUTES_PER_SESSION
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['human_support_queue_map'] = self._build_human_support_queue_map(self.get_queryset())
+        return context
+
+    def _deactivate_human_support(self, conversation, ended_by):
+        support_state = self._get_human_support_state(conversation)
+        if not support_state.get('active'):
+            return
+
+        support_state['active'] = False
+        support_state['unread_for_admin'] = False
+        support_state['ended_at'] = timezone.now().isoformat()
+        support_state['ended_by'] = ended_by
+        self._save_human_support_state(conversation, support_state)
 
     def _save_human_support_state(self, conversation, support_state):
         ctx = conversation.get_context()
@@ -199,6 +263,9 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 'ai_response': 'Bạn đã chuyển lại chế độ Chat với AI. Tôi có thể tiếp tục hỗ trợ bạn ngay bây giờ.',
                 'products': [],
                 'ai_paused': False,
+                'queue_position': None,
+                'queue_waiting_total': len(self._build_human_support_queue_map()),
+                'estimated_wait_minutes': 0,
                 'message': 'Đã chuyển sang Chat với AI.'
             }, status=status.HTTP_200_OK)
 
@@ -226,12 +293,17 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 support_state['last_customer_message_at'] = timezone.now().isoformat()
                 self._save_human_support_state(conversation, support_state)
 
+            queue_position = self._get_queue_position(conversation)
+            queue_map = self._build_human_support_queue_map()
             return Response({
                 'conversation_id': conversation.session_id,
                 'user_message': message,
                 'ai_response': None,
                 'products': [],
                 'ai_paused': True,
+                'queue_position': queue_position,
+                'queue_waiting_total': len(queue_map),
+                'estimated_wait_minutes': self._estimate_wait_minutes(queue_position),
                 'message': 'Đã gửi yêu cầu liên hệ tư vấn viên. Vui lòng chờ admin phản hồi.'
             }, status=status.HTTP_200_OK)
 
@@ -242,12 +314,17 @@ class ConversationViewSet(viewsets.ModelViewSet):
             support_state['last_customer_message_at'] = timezone.now().isoformat()
             self._save_human_support_state(conversation, support_state)
 
+            queue_position = self._get_queue_position(conversation)
+            queue_map = self._build_human_support_queue_map()
             return Response({
                 'conversation_id': conversation.session_id,
                 'user_message': message,
                 'ai_response': None,
                 'products': [],
                 'ai_paused': True,
+                'queue_position': queue_position,
+                'queue_waiting_total': len(queue_map),
+                'estimated_wait_minutes': self._estimate_wait_minutes(queue_position),
                 'message': 'AI đã tạm dừng. Tư vấn viên sẽ phản hồi trực tiếp cho bạn.'
             }, status=status.HTTP_200_OK)
         
@@ -276,9 +353,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
 
         support_state = self._get_human_support_state(conversation)
         if support_state.get('active'):
+            queue_position = self._get_queue_position(conversation)
+            queue_map = self._build_human_support_queue_map()
             return Response({
                 'conversation_id': conversation.session_id,
                 'human_support_active': True,
+                'queue_position': queue_position,
+                'queue_waiting_total': len(queue_map),
+                'estimated_wait_minutes': self._estimate_wait_minutes(queue_position),
                 'message': 'Yêu cầu tư vấn viên đã được ghi nhận trước đó.'
             }, status=status.HTTP_200_OK)
 
@@ -297,10 +379,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
         )
         self._save_human_support_state(conversation, support_state)
 
+        queue_position = self._get_queue_position(conversation)
+        queue_map = self._build_human_support_queue_map()
         return Response({
             'conversation_id': conversation.session_id,
             'human_support_active': True,
             'ai_paused': True,
+            'queue_position': queue_position,
+            'queue_waiting_total': len(queue_map),
+            'estimated_wait_minutes': self._estimate_wait_minutes(queue_position),
             'message': 'Đã gửi yêu cầu liên hệ tư vấn viên thành công.'
         }, status=status.HTTP_200_OK)
 
@@ -318,10 +405,14 @@ class ConversationViewSet(viewsets.ModelViewSet):
         # Lấy messages với products information
         messages = conversation.get_conversation_with_products()
         
+        queue_map = self._build_human_support_queue_map()
         return Response({
             'conversation_id': conversation.session_id,
             'messages': messages,
-            'human_support_active': bool(self._get_human_support_state(conversation).get('active'))
+            'human_support_active': bool(self._get_human_support_state(conversation).get('active')),
+            'queue_position': queue_map.get(conversation.id),
+            'queue_waiting_total': len(queue_map),
+            'estimated_wait_minutes': self._estimate_wait_minutes(queue_map.get(conversation.id)),
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='close_conversation')
@@ -335,11 +426,17 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         
+        self._deactivate_human_support(conversation, 'system')
         conversation.is_active = False
-        conversation.save()
+        conversation.save(update_fields=['is_active', 'updated_at'])
+
+        queue_map = self._build_human_support_queue_map()
         
         return Response({
-            'message': 'Conversation closed successfully'
+            'message': 'Conversation closed successfully',
+            'queue_position': queue_map.get(conversation.id),
+            'queue_waiting_total': len(queue_map),
+            'estimated_wait_minutes': self._estimate_wait_minutes(queue_map.get(conversation.id)),
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='admin_reply')
@@ -360,9 +457,21 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        support_state = self._get_human_support_state(conversation)
+        if support_state.get('active'):
+            queue_position = self._get_queue_position(conversation)
+            if queue_position not in (None, 1):
+                return Response(
+                    {
+                        'error': 'Phiên này chưa tới lượt tư vấn viên.',
+                        'queue_position': queue_position,
+                        'message': 'Vui lòng xử lý phiên ở vị trí 1 trước để đúng thứ tự hàng chờ.'
+                    },
+                    status=status.HTTP_409_CONFLICT
+                )
+
         conversation.add_message('admin', message)
 
-        support_state = self._get_human_support_state(conversation)
         if support_state.get('active'):
             support_state['unread_for_admin'] = False
             support_state['last_admin_reply_at'] = timezone.now().isoformat()
@@ -371,7 +480,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
         return Response({
             'conversation_id': conversation.session_id,
             'admin_message': message,
-            'timestamp': conversation.updated_at.isoformat()
+            'timestamp': conversation.updated_at.isoformat(),
+            'queue_position': self._get_queue_position(conversation),
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='resume_ai')
@@ -393,11 +503,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 'message': 'AI đang ở trạng thái hoạt động.'
             }, status=status.HTTP_200_OK)
 
-        support_state['active'] = False
-        support_state['unread_for_admin'] = False
-        support_state['ended_at'] = timezone.now().isoformat()
-        support_state['ended_by'] = 'admin'
-        self._save_human_support_state(conversation, support_state)
+        self._deactivate_human_support(conversation, 'admin')
 
         conversation.add_message(
             'assistant',
@@ -429,11 +535,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 'message': 'AI đang ở trạng thái hoạt động.'
             }, status=status.HTTP_200_OK)
 
-        support_state['active'] = False
-        support_state['unread_for_admin'] = False
-        support_state['ended_at'] = timezone.now().isoformat()
-        support_state['ended_by'] = 'customer'
-        self._save_human_support_state(conversation, support_state)
+        self._deactivate_human_support(conversation, 'customer')
 
         conversation.add_message(
             'assistant',
@@ -445,6 +547,22 @@ class ConversationViewSet(viewsets.ModelViewSet):
             'human_support_active': False,
             'ai_paused': False,
             'message': 'Đã chuyển sang Chat với AI.'
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='queue_status')
+    def queue_status(self, request, session_id=None):
+        """Lấy trạng thái hàng chờ tư vấn viên của phiên hiện tại."""
+        conversation = self.get_object()
+        support_state = self._get_human_support_state(conversation)
+        queue_map = self._build_human_support_queue_map()
+
+        return Response({
+            'conversation_id': conversation.session_id,
+            'human_support_active': bool(support_state.get('active')),
+            'queue_position': queue_map.get(conversation.id),
+            'queue_waiting_total': len(queue_map),
+            'estimated_wait_minutes': self._estimate_wait_minutes(queue_map.get(conversation.id)),
+            'suggested_poll_interval_seconds': 5,
         }, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='get_product_details')

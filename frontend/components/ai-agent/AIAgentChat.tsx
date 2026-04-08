@@ -1079,6 +1079,9 @@ export default function AIAgentChat({
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [aiPaused, setAiPaused] = useState(false);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
+  const [queueWaitingTotal, setQueueWaitingTotal] = useState<number>(0);
+  const [estimatedWaitMinutes, setEstimatedWaitMinutes] = useState<number>(0);
   const [pendingProductContext, setPendingProductContext] = useState<AIProductContext | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1245,6 +1248,22 @@ export default function AIAgentChat({
     return 'Đang cập nhật giá';
   };
 
+  const applyQueueStateFromPayload = useCallback((data: any) => {
+    if (typeof data?.queue_position === 'number' && data.queue_position > 0) {
+      setQueuePosition(data.queue_position);
+    } else {
+      setQueuePosition(null);
+    }
+
+    if (typeof data?.queue_waiting_total === 'number' && data.queue_waiting_total >= 0) {
+      setQueueWaitingTotal(data.queue_waiting_total);
+    }
+
+    if (typeof data?.estimated_wait_minutes === 'number' && data.estimated_wait_minutes >= 0) {
+      setEstimatedWaitMinutes(data.estimated_wait_minutes);
+    }
+  }, []);
+
   const sendTextMessage = useCallback(async (messageText: string) => {
     if (!messageText.trim() || !conversationId) return;
 
@@ -1280,6 +1299,7 @@ export default function AIAgentChat({
 
         if (data.ai_paused) {
           setAiPaused(true);
+          applyQueueStateFromPayload(data);
           if (data.message) {
             const noticeMessage: Message = {
               role: 'assistant',
@@ -1292,6 +1312,8 @@ export default function AIAgentChat({
         }
 
         setAiPaused(false);
+        setQueuePosition(null);
+        setEstimatedWaitMinutes(0);
         if (data.ai_response) {
           const assistantMessage: Message = {
             role: 'assistant',
@@ -1322,7 +1344,7 @@ export default function AIAgentChat({
     } finally {
       setIsLoading(false);
     }
-  }, [conversationId, fetchAiEndpoint]);
+  }, [conversationId, fetchAiEndpoint, applyQueueStateFromPayload]);
 
   // Chỉ auto-scroll khi có tin nhắn mới và user đang ở gần cuối danh sách.
   useEffect(() => {
@@ -1347,13 +1369,36 @@ export default function AIAgentChat({
         const data = await response.json();
         setMessages(data.messages || []);
         setAiPaused(Boolean(data.human_support_active));
+        applyQueueStateFromPayload(data);
       } else if (response.status === 404) {
         handleConversationNotFound();
       }
     } catch (error) {
       console.error('Failed to load conversation history:', error);
     }
-  }, [conversationId, fetchAiEndpoint, handleConversationNotFound]);
+  }, [conversationId, fetchAiEndpoint, handleConversationNotFound, applyQueueStateFromPayload]);
+
+  const refreshQueueStatus = useCallback(async () => {
+    if (!conversationId || !aiPaused) return;
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetchAiEndpoint(
+        `${apiUrl}/api/ai/conversations/${conversationId}/queue_status/`,
+        {}
+      );
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data = await response.json();
+      setAiPaused(Boolean(data.human_support_active));
+      applyQueueStateFromPayload(data);
+    } catch (error) {
+      console.error('Failed to refresh queue status:', error);
+    }
+  }, [conversationId, aiPaused, fetchAiEndpoint, applyQueueStateFromPayload]);
 
   // Load conversation history on mount
   useEffect(() => {
@@ -1370,6 +1415,16 @@ export default function AIAgentChat({
 
     return () => clearInterval(interval);
   }, [conversationId, loadConversationHistory]);
+
+  useEffect(() => {
+    if (!conversationId || !aiPaused) return;
+
+    const interval = setInterval(() => {
+      void refreshQueueStatus();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [conversationId, aiPaused, refreshQueueStatus]);
 
   // Nếu user đi từ trang chi tiết sản phẩm sang, tự gửi 1 câu hỏi có ngữ cảnh sản phẩm.
   useEffect(() => {
@@ -1510,6 +1565,7 @@ export default function AIAgentChat({
           if (response.ok) {
             const data = await response.json();
             setAiPaused(Boolean(data.ai_paused ?? data.human_support_active));
+            applyQueueStateFromPayload(data);
             await loadConversationHistory();
           } else {
             // Fallback: gửi tin nhắn thường để backend tự nhận diện yêu cầu tư vấn viên.
@@ -1527,6 +1583,7 @@ export default function AIAgentChat({
             if (fallbackResponse.ok) {
               const fallbackData = await fallbackResponse.json();
               setAiPaused(Boolean(fallbackData.ai_paused));
+              applyQueueStateFromPayload(fallbackData);
               await loadConversationHistory();
             } else {
               setMessages((prev) => [
@@ -1635,6 +1692,8 @@ export default function AIAgentChat({
 
       if (response.ok) {
         setAiPaused(false);
+        setQueuePosition(null);
+        setEstimatedWaitMinutes(0);
         await loadConversationHistory();
       } else {
         // Fallback: gửi intent, backend sẽ tự chuyển về AI mode.
@@ -1652,6 +1711,7 @@ export default function AIAgentChat({
         if (fallbackResponse.ok) {
           const fallbackData = await fallbackResponse.json();
           setAiPaused(Boolean(fallbackData.ai_paused));
+          applyQueueStateFromPayload(fallbackData);
           await loadConversationHistory();
         } else {
           setMessages((prev) => [
@@ -1678,6 +1738,14 @@ export default function AIAgentChat({
       setIsLoading(false);
     }
   };
+
+  const queueLabel = queuePosition
+    ? `Vị trí chờ: #${queuePosition}${queueWaitingTotal > 0 ? ` / ${queueWaitingTotal}` : ''}`
+    : 'Đang chờ tư vấn viên phản hồi';
+
+  const estimatedWaitLabel = estimatedWaitMinutes > 0
+    ? `Ước tính còn khoảng ${estimatedWaitMinutes} phút.`
+    : 'Ước tính: tư vấn viên sẽ phản hồi sớm.';
 
   const getSenderName = (role: Message['role']) => {
     if (role === 'user') return 'Tôi';
@@ -1806,7 +1874,10 @@ export default function AIAgentChat({
       {/* FAQ Questions */}
       {aiPaused && (
         <div className={styles.humanSupportNotice}>
-          <span>AI đã tạm dừng. Bạn vẫn có thể nhắn tin và tư vấn viên sẽ trả lời trực tiếp.</span>
+          <span>
+            AI đã tạm dừng. {queueLabel}. {estimatedWaitLabel}
+            {' '}Bạn vẫn có thể nhắn tin và tư vấn viên sẽ trả lời trực tiếp.
+          </span>
           <button
             type="button"
             className={styles.resumeAiButton}
