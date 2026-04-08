@@ -173,6 +173,10 @@ class ConversationViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        user_products = request.data.get('user_products', [])
+        if not isinstance(user_products, list):
+            user_products = []
+
         support_state = self._get_human_support_state(conversation)
 
         if support_state.get('active') and self._is_resume_ai_request(message):
@@ -249,7 +253,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         
         # Gửi tin nhắn tới AI
         service = AIAgentService()
-        ai_response = service.chat(conversation, message)
+        ai_response = service.chat(conversation, message, user_products=user_products)
         
         return Response({
             'conversation_id': conversation.session_id,

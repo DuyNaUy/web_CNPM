@@ -160,8 +160,10 @@ const ProductsPage = () => {
 
     // Client-side filtering
     const filteredProducts = products.filter((product) => {
+        const categoryFilterValue = typeof selectedCategory === 'number' ? selectedCategory : null;
+
         // Filter by category
-        if (selectedCategory !== null && product.category !== selectedCategory) {
+        if (categoryFilterValue !== null && Number(product.category) !== categoryFilterValue) {
             return false;
         }
 
@@ -698,7 +700,10 @@ const ProductsPage = () => {
                         id="categoryFilter"
                         value={selectedCategory}
                         options={[{ label: 'Tất cả danh mục', value: null }, ...categories.map((cat) => ({ label: cat.name, value: cat.id }))]}
-                        onChange={(e) => setSelectedCategory(e.value)}
+                        onChange={(e) => {
+                            const normalizedValue = typeof e.value === 'number' ? e.value : null;
+                            setSelectedCategory(normalizedValue);
+                        }}
                         placeholder="Chọn danh mục"
                         style={{ width: '200px' }}
                     />

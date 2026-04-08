@@ -246,4 +246,5 @@ MOMO_IPN_URL = 'http://localhost:8000/api/orders/momo-callback/'
 
 # AI Configuration
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
+GEMINI_MODEL = config('GEMINI_MODEL', default='gemini-3-flash-preview')
 OPENAI_API_KEY = config('OPENAI_API_KEY', default='')

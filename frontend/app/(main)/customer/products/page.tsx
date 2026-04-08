@@ -11,7 +11,7 @@ import { Sidebar } from 'primereact/sidebar';
 import { Skeleton } from 'primereact/skeleton';
 import { Paginator } from 'primereact/paginator';
 import React, { useRef, useState, useEffect, useContext } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { classNames } from 'primereact/utils';
 import { productAPI, categoryAPI, cartAPI, getStoredUser } from '@/services/api';
 import { LayoutContext } from '@/layout/context/layoutcontext';
@@ -59,6 +59,7 @@ interface Product {
 
 const ProductsPage = () => {
     const router = useRouter();
+    const pathname = usePathname();
     const searchParams = useSearchParams();
     const { setCartCount } = useContext(LayoutContext);
     const [allProducts, setAllProducts] = useState<Product[]>([]); // Lưu tất cả sản phẩm
@@ -92,10 +93,29 @@ const ProductsPage = () => {
 
         // Kiểm tra URL query params để lấy category
         const categoryParam = searchParams.get('category');
-        if (categoryParam) {
-            setSelectedCategory(parseInt(categoryParam, 10));
+        if (!categoryParam) {
+            setSelectedCategory(null);
+            return;
         }
+
+        const parsedCategory = Number.parseInt(categoryParam, 10);
+        setSelectedCategory(Number.isNaN(parsedCategory) ? null : parsedCategory);
     }, [searchParams]);
+
+    const applyCategoryFilter = (categoryId: number | null) => {
+        setSelectedCategory(categoryId);
+        setFirst(0);
+
+        const params = new URLSearchParams(searchParams.toString());
+        if (categoryId === null) {
+            params.delete('category');
+        } else {
+            params.set('category', categoryId.toString());
+        }
+
+        const query = params.toString();
+        router.replace(query ? `${pathname}?${query}` : pathname);
+    };
 
     // Load categories và products
     const loadAllData = async () => {
@@ -150,10 +170,11 @@ const ProductsPage = () => {
 
     const filterAndSortProducts = () => {
         let filtered = [...allProducts];
+        const effectiveCategory = typeof selectedCategory === 'number' ? selectedCategory : null;
 
         // Filter by category
-        if (selectedCategory !== null) {
-            filtered = filtered.filter((p) => p.category === selectedCategory);
+        if (effectiveCategory !== null) {
+            filtered = filtered.filter((p) => Number(p.category) === effectiveCategory);
         }
 
         // Filter by search term
@@ -567,9 +588,8 @@ const ProductsPage = () => {
                             'p-button-text': selectedCategory !== null
                         })}
                         onClick={() => {
-                            setSelectedCategory(null);
+                            applyCategoryFilter(null);
                             setFilterVisible(false);
-                            setFirst(0);
                         }}
                     />
                     {categories.map((cat) => (
@@ -582,9 +602,8 @@ const ProductsPage = () => {
                                 'p-button-text': selectedCategory !== cat.id
                             })}
                             onClick={() => {
-                                setSelectedCategory(cat.id);
+                                applyCategoryFilter(cat.id);
                                 setFilterVisible(false);
-                                setFirst(0);
                             }}
                         />
                     ))}
@@ -608,8 +627,7 @@ const ProductsPage = () => {
                                     'p-button-text': selectedCategory !== null
                                 })}
                                 onClick={() => {
-                                    setSelectedCategory(null);
-                                    setFirst(0);
+                                    applyCategoryFilter(null);
                                 }}
                             />
                             {categories.map((cat) => (
@@ -622,8 +640,7 @@ const ProductsPage = () => {
                                         'p-button-text': selectedCategory !== cat.id
                                     })}
                                     onClick={() => {
-                                        setSelectedCategory(cat.id);
-                                        setFirst(0);
+                                        applyCategoryFilter(cat.id);
                                     }}
                                 />
                             ))}

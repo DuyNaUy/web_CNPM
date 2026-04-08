@@ -31,7 +31,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at', 'status']
     ordering = ['-created_at']
-    authentication_classes = []  # Disable JWT authentication to allow anonymous access to list/retrieve/active
     
     def get_permissions(self):
         """

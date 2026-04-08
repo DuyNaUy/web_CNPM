@@ -366,6 +366,40 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
         router.push('/customer/checkout');
     };
 
+    const chatWithAI = () => {
+        const selectedVariant = product.variants?.find((v) => v.size === selectedSize);
+        const resolvedSize = selectedVariant?.size || selectedSize || product.unit || '30cm';
+        const resolvedPrice = selectedVariant?.price ?? product.price;
+        const fallbackMinPrice = product.min_price ?? product.price;
+        const fallbackMaxPrice = product.max_price ?? product.price;
+
+        const variantPrices = (product.variants || [])
+            .map((variant) => Number(variant.price || 0))
+            .filter((price) => price > 0);
+
+        const minPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : fallbackMinPrice;
+        const maxPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : fallbackMaxPrice;
+
+        const productContext = {
+            source: 'product-detail',
+            product_id: product.id,
+            product_name: product.name,
+            category: product.category,
+            description: product.description,
+            detail_description: product.detailDescription,
+            selected_size: resolvedSize,
+            quantity,
+            price: resolvedPrice,
+            min_price: minPrice,
+            max_price: maxPrice,
+            image: product.images?.[0] || product.main_image_url || null,
+            timestamp: new Date().toISOString(),
+        };
+
+        sessionStorage.setItem('ai_product_context', JSON.stringify(productContext));
+        router.push('/customer/ai-agent');
+    };
+
     return (
         <div className="grid">
             <Toast ref={toast} />
@@ -559,6 +593,14 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                                             : product.stock;
                                         return stock <= 0;
                                     })()}
+                                />
+                                <Button
+                                    icon="pi pi-comments"
+                                    className="p-button-rounded p-button-info p-button-lg"
+                                    style={{ cursor: 'pointer', opacity: 1, minWidth: '3.25rem' }}
+                                    tooltip="Nhờ AI tư vấn sản phẩm này"
+                                    tooltipOptions={{ position: 'top' }}
+                                    onClick={chatWithAI}
                                 />
                             </div>
 

@@ -2,10 +2,8 @@
 
 import React, { useState, useEffect, useRef, useContext, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Toast } from 'primereact/toast';
 import { Dialog } from 'primereact/dialog';
-import { InputNumber } from 'primereact/inputnumber';
 import { Button } from 'primereact/button';
 import { cartAPI, getStoredUser } from '@/services/api';
 import { addItemToLocalCart, getLocalCartTotalQuantity } from '@/services/localCart';
@@ -30,6 +28,7 @@ interface Product {
   id: number;
   name: string;
   image_url?: string;
+  main_image_url?: string;
   price?: number;
   description?: string;
   quantity?: number;
@@ -85,13 +84,34 @@ const FAQ_QUESTIONS: FAQItem[] = [
 interface AIAgentChatProps {
   conversationId: string;
   onRecommendationsReceived?: (recommendations: any[]) => void;
+  onConversationNotFound?: () => void;
 }
+
+interface AIProductContext {
+  source?: string;
+  product_id?: number;
+  product_name?: string;
+  category?: string;
+  description?: string;
+  detail_description?: string;
+  selected_size?: string;
+  quantity?: number;
+  price?: number;
+  min_price?: number;
+  max_price?: number;
+  image?: string | null;
+  timestamp?: string;
+}
+
+const AI_PRODUCT_CONTEXT_KEY = 'ai_product_context';
 
 // Product Card Component
 function ProductCard({ product, conversationId }: { product: Product; conversationId: string }) {
   const router = useRouter();
   const { setCartCount } = useContext(LayoutContext);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [quantity, setQuantity] = useState<number>(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -110,6 +130,10 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
     });
   }, [product]);
 
+  const getProductImage = (targetProduct: Product): string => {
+    return targetProduct.image_url || targetProduct.main_image_url || '/demo/images/product/placeholder.png';
+  };
+
   // Get available stock based on selected size or product stock
   const getAvailableStock = (): number => {
     if (product.variants && product.variants.length > 0) {
@@ -124,11 +148,11 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
   };
 
   // Get total stock from all variants
-  const getTotalStock = (): number => {
-    if (product.variants && product.variants.length > 0) {
-      return product.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+  const getTotalStock = (targetProduct: Product = product): number => {
+    if (targetProduct.variants && targetProduct.variants.length > 0) {
+      return targetProduct.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
     }
-    return product.stock || 0;
+    return targetProduct.stock || 0;
   };
 
   // Get price based on selected size or product price
@@ -141,9 +165,9 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
   };
 
   // Get price range (min-max) - tối đa 3 giá khác nhau
-  const getPriceRange = (): { min: number; max: number; display: string } => {
-    if (product.variants && product.variants.length >= 2) {
-      const prices = product.variants
+  const getPriceRange = (targetProduct: Product = product): { min: number; max: number; display: string } => {
+    if (targetProduct.variants && targetProduct.variants.length >= 2) {
+      const prices = targetProduct.variants
         .filter(v => v.price > 0)
         .map(v => v.price);
       
@@ -169,9 +193,25 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
         };
       }
     }
+
+    if (typeof targetProduct.min_price === 'number' && typeof targetProduct.max_price === 'number') {
+      if (targetProduct.min_price === targetProduct.max_price) {
+        return {
+          min: targetProduct.min_price,
+          max: targetProduct.max_price,
+          display: new Intl.NumberFormat('vi-VN').format(targetProduct.min_price)
+        };
+      }
+
+      return {
+        min: targetProduct.min_price,
+        max: targetProduct.max_price,
+        display: `${new Intl.NumberFormat('vi-VN').format(targetProduct.min_price)} - ${new Intl.NumberFormat('vi-VN').format(targetProduct.max_price)}`
+      };
+    }
     
     // Fallback: giá mặc định
-    const price = product.price || 0;
+    const price = targetProduct.price || 0;
     return {
       min: price,
       max: price,
@@ -180,7 +220,7 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
   };
 
   const availableStock = getAvailableStock();
-  const totalStock = getTotalStock();
+  const totalStock = getTotalStock(product);
   const priceRange = getPriceRange();
   
   const handleViewMore = async () => {
@@ -204,41 +244,36 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
         console.log('[ProductCard] Variants:', detailedProduct.variants);
         console.log('[ProductCard] Stock info - stock:', detailedProduct.stock, 'in_stock:', detailedProduct.in_stock);
         
-        // Lưu vào sessionStorage để trang sản phẩm có thể sử dụng
-        sessionStorage.setItem('productData', JSON.stringify(detailedProduct));
-        console.log('[ProductCard] Saved product data to sessionStorage');
-        
-        toastRef.current?.show({
-          severity: 'info',
-          summary: 'Đang tải',
-          detail: 'Đang mở chi tiết sản phẩm...',
-          life: 1500
-        });
-        
-        // Navigate to product detail page
-        setTimeout(() => {
-          console.log('[ProductCard] Navigating to product detail page');
-          router.push(`/customer/products/${product.id}`);
-        }, 500);
+        const normalizedProduct: Product = {
+          ...product,
+          ...detailedProduct,
+          image_url: detailedProduct?.main_image_url || detailedProduct?.image_url || product.image_url || product.main_image_url,
+          main_image_url: detailedProduct?.main_image_url || detailedProduct?.image_url || product.main_image_url || product.image_url,
+        };
+
+        setDetailProduct(normalizedProduct);
+        setIsDetailModalOpen(true);
       } else {
         console.error('[ProductCard] Failed to fetch product details:', response.status, response.statusText);
         const errorText = await response.text();
         console.error('[ProductCard] Error response:', errorText);
-        
-        // Fallback: Navigate without prepopulated data
+
+        setDetailProduct(product);
+        setIsDetailModalOpen(true);
         toastRef.current?.show({
           severity: 'warn',
           summary: 'Cảnh báo',
-          detail: 'Sẽ mở trang chi tiết sản phẩm'
+          detail: 'Không tải được dữ liệu mới, hiển thị thông tin hiện có'
         });
-        router.push(`/customer/products/${product.id}`);
       }
     } catch (error) {
       console.error('[ProductCard] Error in handleViewMore:', error);
+      setDetailProduct(product);
+      setIsDetailModalOpen(true);
       toastRef.current?.show({
         severity: 'error',
         summary: 'Lỗi',
-        detail: 'Không thể mở chi tiết sản phẩm'
+        detail: 'Không thể tải chi tiết mới, hiển thị dữ liệu hiện có'
       });
     } finally {
       setIsLoading(false);
@@ -502,6 +537,88 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
   return (
     <>
       <Toast ref={toastRef} position="bottom-right" />
+
+      {/* Product Detail Modal */}
+      <Dialog
+        visible={isDetailModalOpen}
+        onHide={() => setIsDetailModalOpen(false)}
+        modal
+        style={{ width: '90vw', maxWidth: '820px' }}
+        header={detailProduct?.name || 'Chi tiết sản phẩm'}
+      >
+        {detailProduct && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+              <img
+                src={getProductImage(detailProduct)}
+                alt={detailProduct.name}
+                style={{
+                  width: '220px',
+                  height: '220px',
+                  objectFit: 'cover',
+                  borderRadius: '12px',
+                  border: '1px solid #f0f0f0',
+                }}
+              />
+
+              <div style={{ flex: 1, minWidth: '240px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '14px', color: '#666' }}>Giá: <strong style={{ color: '#d63739' }}>{getPriceRange(detailProduct).display} ₫</strong></div>
+                <div style={{ fontSize: '14px', color: getTotalStock(detailProduct) > 0 ? '#2d8a43' : '#c41c3b', fontWeight: 600 }}>
+                  Tồn kho tổng: {getTotalStock(detailProduct)}
+                </div>
+                {detailProduct.description && (
+                  <p style={{ margin: 0, color: '#444', lineHeight: 1.6 }}>{detailProduct.description}</p>
+                )}
+              </div>
+            </div>
+
+            {detailProduct.variants && detailProduct.variants.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <strong style={{ fontSize: '14px' }}>Bảng size có sẵn</strong>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {detailProduct.variants.map((variant) => (
+                    <span
+                      key={`detail-${detailProduct.id}-${variant.size}`}
+                      style={{
+                        fontSize: '12px',
+                        borderRadius: '999px',
+                        border: '1px solid #e6e6e6',
+                        padding: '6px 10px',
+                        background: '#fafafa',
+                      }}
+                    >
+                      Size {variant.size}: {variant.price.toLocaleString('vi-VN')} ₫ | {variant.stock} cái
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <Button
+                label="Thêm vào giỏ"
+                icon="pi pi-shopping-cart"
+                onClick={() => {
+                  setIsDetailModalOpen(false);
+                  openAddToCartModal();
+                }}
+                disabled={getTotalStock(detailProduct) === 0 || isLoading}
+                style={{ backgroundColor: '#2ecc71', borderColor: '#27ae60' }}
+              />
+              <Button
+                label="Mua ngay"
+                icon="pi pi-shopping-bag"
+                onClick={() => {
+                  setIsDetailModalOpen(false);
+                  openBuyNowModal();
+                }}
+                disabled={getTotalStock(detailProduct) === 0 || isLoading}
+                style={{ backgroundColor: '#d63739', borderColor: '#b71c1c' }}
+              />
+            </div>
+          </div>
+        )}
+      </Dialog>
       
       {/* Product Modal Dialog - Redesigned 2-Column Layout */}
       <Dialog 
@@ -848,7 +965,7 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
               ) : (
                 <>
                   <Button 
-                    label="Mua ngay" 
+                    label="Thanh toán" 
                     icon="pi pi-shopping-bag"
                     onClick={confirmBuyNow}
                     loading={isLoading}
@@ -895,22 +1012,13 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
           </div>
         )}
         
-        {product.image_url && (
-          <div className={styles.productImage}>
-            <img src={product.image_url} alt={product.name} />
-          </div>
-        )}
+        <div className={styles.productImage}>
+          <img src={getProductImage(product)} alt={product.name} />
+        </div>
         <div className={styles.productInfo}>
           <h4 className={styles.productName}>{product.name}</h4>
           
-          {/* Price Display - hiển thị min-max nếu có nhiều variants */}
-          {product.variants && product.variants.length >= 2 ? (
-            <p className={styles.productPrice}>{priceRange.display} ₫</p>
-          ) : (
-            getProductPrice() > 0 && (
-              <p className={styles.productPrice}>{getProductPrice().toLocaleString('vi-VN')} ₫</p>
-            )
-          )}
+          <p className={styles.productPrice}>Giá: {priceRange.display} ₫</p>
           
           {/* Price Range Display - fallback */}
           {product.price_range && product.variants && product.variants.length < 2 && (
@@ -964,17 +1072,21 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
 }
 
 export default function AIAgentChat({
-  conversationId
+  conversationId,
+  onConversationNotFound,
 }: AIAgentChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [aiPaused, setAiPaused] = useState(false);
+  const [pendingProductContext, setPendingProductContext] = useState<AIProductContext | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
   const previousMessageCountRef = useRef(0);
   const disableAiAuthRef = useRef(false);
+  const hasLoadedProductContextRef = useRef(false);
+  const hasHandledConversationNotFoundRef = useRef(false);
   const router = useRouter();
 
   const fetchAiEndpoint = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
@@ -1010,6 +1122,13 @@ export default function AIAgentChat({
     return response;
   }, []);
 
+  const handleConversationNotFound = useCallback(() => {
+    if (hasHandledConversationNotFoundRef.current) return;
+    hasHandledConversationNotFoundRef.current = true;
+    setIsLoading(false);
+    onConversationNotFound?.();
+  }, [onConversationNotFound]);
+
   // Helper function to sort and filter products by relevance and sales
   const sortProductsByRelevance = (products: Product[]): Product[] => {
     if (!products || products.length === 0) return [];
@@ -1030,6 +1149,43 @@ export default function AIAgentChat({
     return sorted.slice(0, 5);
   };
 
+  const normalizeProductsPayload = (rawProducts: any[]): Product[] => {
+    if (!Array.isArray(rawProducts)) return [];
+
+    return rawProducts
+      .map((item: any, index: number): Product | null => {
+        const source = item?.product && typeof item.product === 'object' ? item.product : item;
+        if (!source || typeof source !== 'object') return null;
+
+        const rawId = source.id ?? source.product_id;
+        const normalizedId = Number(rawId);
+        const rawPrice = source.price ?? source.min_price ?? source?.price_range?.min ?? 0;
+        const normalizedPrice = Number(rawPrice) || 0;
+
+        const product: Product = {
+          id: Number.isFinite(normalizedId) && normalizedId > 0 ? normalizedId : Date.now() + index,
+          name: String(source.name || source.product_name || source.title || `Sản phẩm #${index + 1}`),
+          image_url: source.image_url || source.image || source.main_image_url,
+          main_image_url: source.main_image_url || source.image_url || source.image,
+          price: normalizedPrice,
+          description: source.description || source.detail_description,
+          stock: Number(source.stock ?? source.total_stock ?? 0) || 0,
+          variants: Array.isArray(source.variants) ? source.variants : [],
+          sold_count: Number(source.sold_count ?? 0) || 0,
+          rating: Number(source.rating ?? 0) || 0,
+          similarity: Number(source.similarity ?? 0) || 0,
+          quantity: Number(source.quantity ?? 1) || 1,
+          unit: source.unit,
+          price_range: source.price_range,
+          min_price: Number(source.min_price ?? source?.price_range?.min ?? normalizedPrice) || normalizedPrice,
+          max_price: Number(source.max_price ?? source?.price_range?.max ?? normalizedPrice) || normalizedPrice,
+        };
+
+        return product;
+      })
+      .filter((p): p is Product => Boolean(p));
+  };
+
   const isUserNearBottom = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return true;
@@ -1042,59 +1198,61 @@ export default function AIAgentChat({
     shouldAutoScrollRef.current = isUserNearBottom();
   };
 
-  // Chỉ auto-scroll khi có tin nhắn mới và user đang ở gần cuối danh sách.
-  useEffect(() => {
-    const hasNewMessage = messages.length > previousMessageCountRef.current;
-    if (hasNewMessage && shouldAutoScrollRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-    previousMessageCountRef.current = messages.length;
-  }, [messages.length]);
+  const buildProductContextPrompt = (ctx: AIProductContext): string => {
+    const name = ctx.product_name || 'sản phẩm này';
+    const category = ctx.category || 'không rõ danh mục';
+    const size = ctx.selected_size || 'chưa chọn';
+    const quantity = ctx.quantity || 1;
+    const priceText = typeof ctx.price === 'number'
+      ? `${ctx.price.toLocaleString('vi-VN')} VND`
+      : 'chưa có giá cụ thể';
+    const desc = ctx.description || '';
 
-  const loadConversationHistory = useCallback(async () => {
-    if (!conversationId) return;
+    return `Tôi vừa xem sản phẩm "${name}" (danh mục: ${category}, size: ${size}, số lượng: ${quantity}, giá: ${priceText}). Hãy tư vấn giúp tôi sản phẩm này có phù hợp không, ưu/nhược điểm chính, và gợi ý thêm 2-3 lựa chọn tương tự cùng tầm giá. Mô tả ngắn hiện có: ${desc}`;
+  };
 
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetchAiEndpoint(
-        `${apiUrl}/api/ai/conversations/${conversationId}/get_history/`,
-        {}
-      );
+  const buildProductCardPayload = (ctx: AIProductContext): Product => {
+    const minPrice = typeof ctx.min_price === 'number' ? ctx.min_price : (typeof ctx.price === 'number' ? ctx.price : 0);
+    const maxPrice = typeof ctx.max_price === 'number' ? ctx.max_price : (typeof ctx.price === 'number' ? ctx.price : minPrice);
 
-      if (response.ok) {
-        const data = await response.json();
-        setMessages(data.messages || []);
-        setAiPaused(Boolean(data.human_support_active));
+    return {
+      id: ctx.product_id || Date.now(),
+      name: ctx.product_name || 'Sản phẩm đã chọn',
+      image_url: ctx.image || '/demo/images/product/placeholder.png',
+      price: typeof ctx.price === 'number' ? ctx.price : minPrice,
+      min_price: minPrice,
+      max_price: maxPrice,
+      price_range: {
+        min: minPrice,
+        max: maxPrice,
+      },
+      unit: ctx.selected_size,
+    };
+  };
+
+  const getPendingContextPriceLabel = (ctx: AIProductContext): string => {
+    if (typeof ctx.min_price === 'number' && typeof ctx.max_price === 'number') {
+      if (ctx.min_price === ctx.max_price) {
+        return `${ctx.min_price.toLocaleString('vi-VN')} VND`;
       }
-    } catch (error) {
-      console.error('Failed to load conversation history:', error);
+      return `${ctx.min_price.toLocaleString('vi-VN')} - ${ctx.max_price.toLocaleString('vi-VN')} VND`;
     }
-  }, [conversationId, fetchAiEndpoint]);
 
-  // Load conversation history on mount
-  useEffect(() => {
-    void loadConversationHistory();
-  }, [loadConversationHistory]);
+    if (typeof ctx.price === 'number') {
+      return `${ctx.price.toLocaleString('vi-VN')} VND`;
+    }
 
-  // Poll history to receive admin replies in near real time.
-  useEffect(() => {
-    if (!conversationId) return;
+    return 'Đang cập nhật giá';
+  };
 
-    const interval = setInterval(() => {
-      void loadConversationHistory();
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [conversationId, loadConversationHistory]);
-
-  const sendMessage = async () => {
-    if (!inputValue.trim() || !conversationId) return;
+  const sendTextMessage = useCallback(async (messageText: string) => {
+    if (!messageText.trim() || !conversationId) return;
 
     shouldAutoScrollRef.current = true;
 
     const userMessage: Message = {
       role: 'user',
-      content: inputValue,
+      content: messageText,
       timestamp: new Date().toISOString(),
     };
 
@@ -1119,8 +1277,6 @@ export default function AIAgentChat({
 
       if (response.ok) {
         const data = await response.json();
-        console.log('[AIAgentChat] Received response:', data);
-        console.log('[AIAgentChat] Products in response:', data.products);
 
         if (data.ai_paused) {
           setAiPaused(true);
@@ -1143,10 +1299,10 @@ export default function AIAgentChat({
             timestamp: new Date().toISOString(),
             products: data.products || [],
           };
-
-          console.log('[AIAgentChat] Assistant message with products:', assistantMessage);
           setMessages((prev) => [...prev, assistantMessage]);
         }
+      } else if (response.status === 404) {
+        handleConversationNotFound();
       } else {
         const errorMessage: Message = {
           role: 'assistant',
@@ -1166,6 +1322,160 @@ export default function AIAgentChat({
     } finally {
       setIsLoading(false);
     }
+  }, [conversationId, fetchAiEndpoint]);
+
+  // Chỉ auto-scroll khi có tin nhắn mới và user đang ở gần cuối danh sách.
+  useEffect(() => {
+    const hasNewMessage = messages.length > previousMessageCountRef.current;
+    if (hasNewMessage && shouldAutoScrollRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    previousMessageCountRef.current = messages.length;
+  }, [messages.length]);
+
+  const loadConversationHistory = useCallback(async () => {
+    if (!conversationId) return;
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetchAiEndpoint(
+        `${apiUrl}/api/ai/conversations/${conversationId}/get_history/`,
+        {}
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setMessages(data.messages || []);
+        setAiPaused(Boolean(data.human_support_active));
+      } else if (response.status === 404) {
+        handleConversationNotFound();
+      }
+    } catch (error) {
+      console.error('Failed to load conversation history:', error);
+    }
+  }, [conversationId, fetchAiEndpoint, handleConversationNotFound]);
+
+  // Load conversation history on mount
+  useEffect(() => {
+    void loadConversationHistory();
+  }, [loadConversationHistory]);
+
+  // Poll history to receive admin replies in near real time.
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const interval = setInterval(() => {
+      void loadConversationHistory();
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [conversationId, loadConversationHistory]);
+
+  // Nếu user đi từ trang chi tiết sản phẩm sang, tự gửi 1 câu hỏi có ngữ cảnh sản phẩm.
+  useEffect(() => {
+    if (!conversationId || hasLoadedProductContextRef.current) return;
+
+    const raw = sessionStorage.getItem(AI_PRODUCT_CONTEXT_KEY);
+    if (!raw) return;
+
+    hasLoadedProductContextRef.current = true;
+
+    try {
+      const contextData: AIProductContext = JSON.parse(raw);
+      setPendingProductContext(contextData);
+    } catch (error) {
+      console.error('Failed to parse AI product context:', error);
+      sessionStorage.removeItem(AI_PRODUCT_CONTEXT_KEY);
+    }
+  }, [conversationId]);
+
+  const sendPendingProductContext = async () => {
+    if (!pendingProductContext || isLoading) return;
+
+    const prompt = buildProductContextPrompt(pendingProductContext);
+    if (!prompt.trim()) return;
+
+    shouldAutoScrollRef.current = true;
+
+    const cardPayload = buildProductCardPayload(pendingProductContext);
+    const userCardMessage: Message = {
+      role: 'user',
+      content: '',
+      timestamp: new Date().toISOString(),
+      products: [cardPayload],
+    };
+
+    setMessages((prev) => [...prev, userCardMessage]);
+    setPendingProductContext(null);
+    sessionStorage.removeItem(AI_PRODUCT_CONTEXT_KEY);
+
+    setIsLoading(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetchAiEndpoint(
+        `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: prompt,
+            user_products: [cardPayload],
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data.ai_paused) {
+          setAiPaused(true);
+          if (data.message) {
+            const noticeMessage: Message = {
+              role: 'assistant',
+              content: data.message,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, noticeMessage]);
+          }
+          return;
+        }
+
+        setAiPaused(false);
+        if (data.ai_response) {
+          const assistantMessage: Message = {
+            role: 'assistant',
+            content: data.ai_response,
+            timestamp: new Date().toISOString(),
+            products: data.products || [],
+          };
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
+      } else {
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại.',
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
+    } catch (error) {
+      console.error('Failed to send product context message:', error);
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại.',
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!inputValue.trim() || !conversationId) return;
+    await sendTextMessage(inputValue);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -1432,18 +1742,47 @@ export default function AIAgentChat({
                     )}
                   </div>
 
-                  {msg.content && <p className={styles.messageText}>{msg.content}</p>}
+                  {msg.content && !(msg.role === 'user' && msg.products && msg.products.length > 0) && (
+                    <p className={styles.messageText}>{msg.content}</p>
+                  )}
                   
                   {/* Product Display */}
                   {msg.products && msg.products.length > 0 && (
-                    <>
-                      {console.log('[AIAgentChat] Rendering products:', msg.products)}
+                    msg.role === 'user' ? (
+                      <div className={styles.sentProductGrid}>
+                        {normalizeProductsPayload(msg.products).map((product) => {
+                          const minPrice = typeof product.min_price === 'number'
+                            ? product.min_price
+                            : (product.price_range?.min || product.price || 0);
+                          const maxPrice = typeof product.max_price === 'number'
+                            ? product.max_price
+                            : (product.price_range?.max || product.price || minPrice);
+                          const priceText = minPrice === maxPrice
+                            ? `${minPrice.toLocaleString('vi-VN')} VND`
+                            : `${minPrice.toLocaleString('vi-VN')} - ${maxPrice.toLocaleString('vi-VN')} VND`;
+
+                          return (
+                            <div key={`${product.id}-${priceText}`} className={styles.sentProductCard}>
+                              <img
+                                src={product.image_url || '/demo/images/product/placeholder.png'}
+                                alt={product.name}
+                                className={styles.sentProductImage}
+                              />
+                              <div className={styles.sentProductInfo}>
+                                <p className={styles.sentProductName}>{product.name}</p>
+                                <p className={styles.sentProductPrice}>{priceText}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
                       <div className={styles.productsGrid}>
-                        {sortProductsByRelevance(msg.products).map((product) => (
+                        {sortProductsByRelevance(normalizeProductsPayload(msg.products)).map((product) => (
                           <ProductCard key={product.id} product={product} conversationId={conversationId} />
                         ))}
                       </div>
-                    </>
+                    )
                   )}
                 </div>
               </div>
@@ -1497,6 +1836,29 @@ export default function AIAgentChat({
 
       {/* Input Area */}
       <div className={styles.inputContainer}>
+        {pendingProductContext && (
+          <div className={styles.pendingProductBar}>
+            <div className={styles.pendingProductLeft}>
+              <img
+                src={pendingProductContext.image || '/demo/images/product/placeholder.png'}
+                alt={pendingProductContext.product_name || 'Sản phẩm'}
+                className={styles.pendingProductImage}
+              />
+              <div className={styles.pendingProductMeta}>
+                <p className={styles.pendingProductName}>{pendingProductContext.product_name || 'Sản phẩm đã chọn'}</p>
+                <p className={styles.pendingProductPrice}>{getPendingContextPriceLabel(pendingProductContext)}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={styles.pendingSendButton}
+              onClick={sendPendingProductContext}
+              disabled={isLoading}
+            >
+              Gửi
+            </button>
+          </div>
+        )}
         <textarea
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}

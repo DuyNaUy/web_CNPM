@@ -24,6 +24,7 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
   const [selectedRecommendations, setSelectedRecommendations] = useState<Recommendation[]>([]);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const disableAiAuthRef = useRef(false);
+  const isRecoveringSessionRef = useRef(false);
 
   const fetchAiEndpoint = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
     const token = localStorage.getItem('access_token');
@@ -73,6 +74,20 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
       console.error('Failed to start conversation:', error);
     }
   }, [fetchAiEndpoint]);
+
+  const recoverConversationSession = useCallback(async () => {
+    if (isRecoveringSessionRef.current) return;
+    isRecoveringSessionRef.current = true;
+
+    try {
+      localStorage.removeItem('teddy_ai_session_id');
+      setConversationId(null);
+      setSelectedRecommendations([]);
+      await handleStartConversation();
+    } finally {
+      isRecoveringSessionRef.current = false;
+    }
+  }, [handleStartConversation]);
 
   const handleNewConversation = () => {
     if (window.confirm('Bạn có chắc muốn bắt đầu cuộc trò chuyện mới? Lịch sử hiện tại sẽ được thay thế.')) {
@@ -191,16 +206,44 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
 
   // Kiểm tra localStorage khi component mount
   useEffect(() => {
-    const savedSessionId = localStorage.getItem('teddy_ai_session_id');
-    if (savedSessionId) {
-      console.log('[AIAgentConsole] Loaded conversation from localStorage:', savedSessionId);
-      setConversationId(savedSessionId);
-    } else {
-      // Auto-start conversation if not exists
-      console.log('[AIAgentConsole] No conversation found, auto-starting...');
-      void handleStartConversation();
-    }
-  }, [handleStartConversation]);
+    const bootstrapConversation = async () => {
+      const savedSessionId = localStorage.getItem('teddy_ai_session_id');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+      if (!savedSessionId) {
+        console.log('[AIAgentConsole] No conversation found, auto-starting...');
+        await handleStartConversation();
+        return;
+      }
+
+      try {
+        const verifyResponse = await fetchAiEndpoint(
+          `${apiUrl}/api/ai/conversations/${savedSessionId}/get_history/`,
+          {}
+        );
+
+        if (verifyResponse.ok) {
+          console.log('[AIAgentConsole] Loaded valid conversation from localStorage:', savedSessionId);
+          setConversationId(savedSessionId);
+          return;
+        }
+
+        if (verifyResponse.status === 404) {
+          console.warn('[AIAgentConsole] Saved conversation not found (404), recreating...');
+          await recoverConversationSession();
+          return;
+        }
+
+        // Trường hợp status khác 404, vẫn thử dùng session cũ để tránh làm mất ngữ cảnh không cần thiết.
+        setConversationId(savedSessionId);
+      } catch (error) {
+        console.error('[AIAgentConsole] Failed to verify saved conversation:', error);
+        await recoverConversationSession();
+      }
+    };
+
+    void bootstrapConversation();
+  }, [fetchAiEndpoint, handleStartConversation, recoverConversationSession]);
 
   if (!conversationId) {
     return (
@@ -237,6 +280,9 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
           <AIAgentChat
             conversationId={conversationId}
             onRecommendationsReceived={handleRecommendationsReceived}
+            onConversationNotFound={() => {
+              void recoverConversationSession();
+            }}
           />
           {selectedRecommendations.length > 0 && (
             <button

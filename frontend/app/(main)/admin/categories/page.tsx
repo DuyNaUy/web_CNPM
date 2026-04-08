@@ -97,39 +97,43 @@ const CategoriesPage = () => {
             try {
                 setLoading(true);
 
+                let response: any;
+
                 if (category.id) {
                     // Update existing category
-                    const response = await categoryAPI.update(category.id, {
+                    response = await categoryAPI.update(category.id, {
                         name: category.name,
                         description: category.description,
                         status: category.status
                     });
-
-                    if (response.data) {
-                        toast.current?.show({
-                            severity: 'success',
-                            summary: 'Thành công',
-                            detail: response.message || 'Cập nhật danh mục thành công',
-                            life: 3000
-                        });
-                    }
                 } else {
                     // Create new category
-                    const response = await categoryAPI.create({
+                    response = await categoryAPI.create({
                         name: category.name,
                         description: category.description,
                         status: category.status
                     });
-
-                    if (response.data) {
-                        toast.current?.show({
-                            severity: 'success',
-                            summary: 'Thành công',
-                            detail: response.message || 'Thêm danh mục thành công',
-                            life: 3000
-                        });
-                    }
                 }
+
+                const backendError = response?.error || response?.detail || (response?.success === false ? response?.message : null);
+                const isFailed = !!(response?.error || response?.detail || response?.success === false);
+
+                if (isFailed) {
+                    toast.current?.show({
+                        severity: 'error',
+                        summary: 'Lỗi',
+                        detail: backendError || 'Không thể lưu danh mục',
+                        life: 5000
+                    });
+                    return;
+                }
+
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Thành công',
+                    detail: response?.message || (category.id ? 'Cập nhật danh mục thành công' : 'Thêm danh mục thành công'),
+                    life: 3000
+                });
 
                 // Reload categories list
                 await loadCategories();
@@ -170,12 +174,15 @@ const CategoriesPage = () => {
             setLoading(true);
             const response = await categoryAPI.delete(category.id);
 
-            // Kiểm tra nếu có lỗi từ backend
-            if (response.error) {
+            // API wrapper có thể trả JSON lỗi cho non-2xx, nên cần bắt đủ key lỗi phổ biến.
+            const backendError = response?.error || response?.detail || response?.message;
+            const isFailed = !!(response?.error || response?.detail || response?.success === false);
+
+            if (isFailed) {
                 toast.current?.show({
                     severity: 'error',
                     summary: 'Lỗi',
-                    detail: response.error,
+                    detail: backendError || 'Không thể xóa danh mục',
                     life: 5000
                 });
                 setDeleteCategoryDialog(false);
@@ -190,7 +197,8 @@ const CategoriesPage = () => {
                 life: 3000
             });
 
-            // Reload categories list
+            // Cập nhật UI ngay, sau đó đồng bộ lại với server.
+            setCategories((prev) => prev.filter((item) => item.id !== category.id));
             await loadCategories();
             setDeleteCategoryDialog(false);
             setCategory({

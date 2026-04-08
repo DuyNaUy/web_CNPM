@@ -46,6 +46,39 @@ const CustomerHomePage = () => {
                 </div>
             </div>
 
+            {/* AI Consultation Section */}
+            <div className="py-5 px-4 lg:px-8 mt-5 mx-0 lg:mx-8">
+                <div
+                    className="border-round-3xl shadow-3 p-4 md:p-5"
+                    style={{
+                        background: 'linear-gradient(135deg, #fff6fb 0%, #ffe3f0 100%)',
+                        border: '2px solid #ffc3dc'
+                    }}
+                >
+                    <div className="grid align-items-center">
+                        <div className="col-12 lg:col-8">
+                            <h3 className="text-900 text-3xl mb-2">AI Tư Vấn Quà Tặng 24/7</h3>
+                            <p className="text-700 text-lg mb-0 line-height-3">
+                                Chưa biết chọn mẫu nào phù hợp? AI sẽ gợi ý theo ngân sách, màu sắc, dịp tặng và nhu cầu của bạn chỉ trong vài giây.
+                            </p>
+                        </div>
+                        <div className="col-12 lg:col-4 flex lg:justify-content-end mt-3 lg:mt-0">
+                            <Link href="/customer/ai-agent">
+                                <Button
+                                    type="button"
+                                    label="Tư vấn với AI ngay"
+                                    icon="pi pi-comments"
+                                    rounded
+                                    size="large"
+                                    className="border-none text-white"
+                                    style={{ background: 'linear-gradient(135deg, #ff4f9a 0%, #ff2f7d 100%)' }}
+                                />
+                            </Link>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* Products Collection Section */}
             <div className="py-6 px-4 lg:px-8 mt-6 mx-0 lg:mx-8">
                 <div className="grid justify-content-center">

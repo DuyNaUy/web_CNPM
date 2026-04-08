@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import ConversationSession, AIRecommendation, AutomatedOrder
+from .models import ConversationSession, ConversationMessage, AIRecommendation, AutomatedOrder
 
 
 @admin.register(ConversationSession)
@@ -16,6 +16,19 @@ class AIRecommendationAdmin(admin.ModelAdmin):
     list_filter = ['is_accepted', 'created_at', 'confidence_score']
     search_fields = ['conversation__session_id', 'product__name']
     readonly_fields = ['created_at']
+
+
+@admin.register(ConversationMessage)
+class ConversationMessageAdmin(admin.ModelAdmin):
+    list_display = ['id', 'conversation', 'role', 'short_content', 'created_at']
+    list_filter = ['role', 'created_at']
+    search_fields = ['conversation__session_id', 'content']
+    readonly_fields = ['created_at']
+
+    def short_content(self, obj):
+        return (obj.content[:60] + '...') if len(obj.content) > 60 else obj.content
+
+    short_content.short_description = 'Nội dung'
 
 
 @admin.register(AutomatedOrder)
