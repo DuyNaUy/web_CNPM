@@ -2,6 +2,7 @@
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Ripple } from 'primereact/ripple';
+import { Badge } from 'primereact/badge';
 import { classNames } from 'primereact/utils';
 import React, { useEffect, useContext } from 'react';
 import { CSSTransition } from 'react-transition-group';
@@ -45,6 +46,12 @@ const AppMenuitem = (props: AppMenuItemProps) => {
         else setActiveMenu(key);
     };
 
+    const hasBadge =
+        item!.badgeValue !== undefined
+        && item!.badgeValue !== null
+        && ((typeof item!.badgeValue === 'number' && item!.badgeValue > 0)
+            || (typeof item!.badgeValue === 'string' && item!.badgeValue.trim().length > 0));
+
     const subMenu = item!.items && item!.visible !== false && (
         <CSSTransition timeout={{ enter: 1000, exit: 450 }} classNames="layout-submenu" in={props.root ? true : active} key={item!.label}>
             <ul>
@@ -62,6 +69,9 @@ const AppMenuitem = (props: AppMenuItemProps) => {
                 <a href={item!.url} onClick={(e) => itemClick(e)} className={classNames(item!.class, 'p-ripple')} target={item!.target} tabIndex={0}>
                     <i className={classNames('layout-menuitem-icon', item!.icon)}></i>
                     <span className="layout-menuitem-text">{item!.label}</span>
+                    {hasBadge && (
+                        <Badge value={item!.badgeValue} className="ml-auto" severity="danger" />
+                    )}
                     {item!.items && <i className="pi pi-fw pi-angle-down layout-submenu-toggler"></i>}
                     <Ripple />
                 </a>
@@ -71,6 +81,9 @@ const AppMenuitem = (props: AppMenuItemProps) => {
                 <Link href={item!.to} replace={item!.replaceUrl} target={item!.target} onClick={(e) => itemClick(e)} className={classNames(item!.class, 'p-ripple', { 'active-route': isActiveRoute })} tabIndex={0}>
                     <i className={classNames('layout-menuitem-icon', item!.icon)}></i>
                     <span className="layout-menuitem-text">{item!.label}</span>
+                    {hasBadge && (
+                        <Badge value={item!.badgeValue} className="ml-auto" severity="danger" />
+                    )}
                     {item!.items && <i className="pi pi-fw pi-angle-down layout-submenu-toggler"></i>}
                     <Ripple />
                 </Link>

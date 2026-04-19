@@ -24,6 +24,7 @@ interface Order {
     id: number;
     order_code: string;
     created_at: string;
+    updated_at?: string;
     status: 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled' | 'returned';
     total_amount: number;
     items: OrderItem[];
@@ -35,6 +36,9 @@ interface Order {
 }
 
 const OrdersPage = () => {
+    const RETURN_WINDOW_DAYS = 3;
+    const RETURN_WINDOW_MS = RETURN_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
     const router = useRouter();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
@@ -96,12 +100,41 @@ const OrdersPage = () => {
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(rowData.total_amount);
     };
 
+    const getDeliveredTime = (order: Order) => {
+        // Prefer updated_at because it reflects status transition time better than created_at.
+        const deliveredTime = order.updated_at || order.created_at;
+        return new Date(deliveredTime).getTime();
+    };
+
+    const canReturnOrder = (order: Order) => {
+        if (order.status !== 'delivered') {
+            return false;
+        }
+
+        const deliveredAt = getDeliveredTime(order);
+        if (Number.isNaN(deliveredAt)) {
+            return false;
+        }
+
+        return Date.now() - deliveredAt <= RETURN_WINDOW_MS;
+    };
+
     const actionBodyTemplate = (rowData: Order) => {
+        const isReturnAllowed = canReturnOrder(rowData);
         return (
             <div className="flex gap-2">
                 <Button icon="pi pi-eye" rounded outlined onClick={() => viewOrderDetail(rowData)} tooltip="Xem chi tiết" />
                 {(rowData.status === 'pending' || rowData.status === 'confirmed') && <Button icon="pi pi-times" rounded outlined severity="danger" onClick={() => cancelOrder(rowData)} tooltip="Hủy đơn" />}
-                {rowData.status === 'delivered' && <Button icon="pi pi-replay" rounded outlined severity="warning" onClick={() => returnOrder(rowData)} tooltip="Hoàn hàng" />}
+                {rowData.status === 'delivered' && isReturnAllowed && (
+                    <Button
+                        icon="pi pi-replay"
+                        rounded
+                        outlined
+                        severity="warning"
+                        onClick={() => returnOrder(rowData)}
+                        tooltip="Hoàn hàng"
+                    />
+                )}
             </div>
         );
     };
@@ -142,6 +175,16 @@ const OrdersPage = () => {
     };
 
     const returnOrder = (order: Order) => {
+        if (!canReturnOrder(order)) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Không thể hoàn hàng',
+                detail: `Đơn hàng đã quá ${RETURN_WINDOW_DAYS} ngày kể từ khi nhận hàng`,
+                life: 3500
+            });
+            return;
+        }
+
         confirmDialog({
             message: `Bạn có muốn yêu cầu hoàn hàng cho đơn hàng ${order.order_code}?`,
             header: 'Yêu cầu hoàn hàng',
@@ -159,7 +202,7 @@ const OrdersPage = () => {
                     product_name: firstItem?.product_name || `Đơn hàng ${order.order_code}`,
                     category: 'hoàn hàng',
                     description: `Yêu cầu hoàn hàng cho đơn ${order.order_code}. Sản phẩm: ${itemNames}`,
-                    detail_description: `Mã đơn: ${order.order_code} | Người nhận: ${order.full_name} | SĐT: ${order.phone} | Địa chỉ: ${order.address}`,
+                    detail_description: `Mã đơn: ${order.order_code} | Ngày đặt: ${new Date(order.created_at).toLocaleString('vi-VN')} | Người nhận: ${order.full_name} | SĐT: ${order.phone} | Địa chỉ: ${order.address}`,
                     selected_size: firstItem?.unit || 'không áp dụng',
                     quantity: totalQuantity,
                     price: firstItemPrice > 0 ? firstItemPrice : order.total_amount,
@@ -169,6 +212,7 @@ const OrdersPage = () => {
                     timestamp: new Date().toISOString(),
                     order_id: order.id,
                     order_code: order.order_code,
+                    order_created_at: order.created_at,
                     auto_send: true
                 }));
 

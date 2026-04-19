@@ -103,6 +103,7 @@ interface AIProductContext {
   timestamp?: string;
   order_id?: number;
   order_code?: string;
+  order_created_at?: string;
   auto_send?: boolean;
 }
 
@@ -1212,9 +1213,12 @@ export default function AIAgentChat({
       const totalText = typeof ctx.price === 'number'
         ? `${ctx.price.toLocaleString('vi-VN')} VND`
         : 'không rõ tổng tiền';
+      const orderDateText = ctx.order_created_at
+        ? new Date(ctx.order_created_at).toLocaleString('vi-VN')
+        : 'không rõ ngày đặt';
       const orderDetail = ctx.detail_description || '';
 
-      return `Tôi cần hỗ trợ HOÀN HÀNG cho đơn ${orderCode}. Sản phẩm chính: ${productName}, số lượng: ${quantity}, tổng tiền: ${totalText}. Thông tin đơn: ${orderDetail}. Vui lòng chuyển cuộc trò chuyện này cho admin/nhân viên hỗ trợ để xử lý hoàn hàng.`;
+      return `Tôi cần hỗ trợ HOÀN HÀNG cho đơn ${orderCode}. Ngày đặt: ${orderDateText}. Sản phẩm chính: ${productName}, số lượng: ${quantity}, tổng tiền: ${totalText}. Thông tin đơn: ${orderDetail}. Vui lòng chuyển cuộc trò chuyện này cho admin/nhân viên hỗ trợ để xử lý hoàn hàng.`;
     }
 
     const name = ctx.product_name || 'sản phẩm này';
@@ -1468,9 +1472,10 @@ export default function AIAgentChat({
     shouldAutoScrollRef.current = true;
 
     const cardPayload = buildProductCardPayload(pendingProductContext);
+    const shouldShowContextText = pendingProductContext.source === 'order-return';
     const userCardMessage: Message = {
       role: 'user',
-      content: '',
+      content: shouldShowContextText ? prompt : '',
       timestamp: new Date().toISOString(),
       products: [cardPayload],
     };

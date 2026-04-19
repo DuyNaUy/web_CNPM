@@ -96,6 +96,7 @@ export interface MenuModel {
 export interface AppMenuItem extends MenuModel {
     items?: AppMenuItem[];
     badge?: 'UPDATED' | 'NEW';
+    badgeValue?: string | number;
     badgeClass?: string;
     class?: string;
     preventExact?: boolean;

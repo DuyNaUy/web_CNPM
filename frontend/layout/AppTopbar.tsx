@@ -274,12 +274,12 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                         </button>
 
                         <div ref={topbarmenuRef} className={classNames('layout-topbar-menu', { 'layout-topbar-menu-mobile-active': layoutState.profileSidebarVisible })}>
-                            <div className="px-3 py-3 border-bottom-1 surface-border" style={{ background: 'linear-gradient(135deg, #ffb6c1 0%, #ff69b4 100%)' }}>
+                            <div className="px-3 py-3 border-bottom-1 surface-border">
                                 <div className="flex flex-column">
-                                    <span className="font-bold text-white" style={{ fontSize: '1.1rem' }}>{user.full_name}</span>
-                                    <span className="text-white text-sm opacity-90">{user.email}</span>
+                                    <span className="font-bold" style={{ fontSize: '1.1rem', color: '#333' }}>{user.full_name}</span>
                                 </div>
                             </div>
+
 
                             <button type="button" className="p-link layout-topbar-button hover:surface-100 transition-colors transition-duration-200" onClick={handleShowProfile} style={{ padding: '1rem 1.5rem' }}>
                                 <i className="pi pi-user-edit" style={{ color: '#ff69b4', fontSize: '1.1rem' }}></i>
@@ -297,7 +297,8 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
             {/* Profile Dialog */}
             <Dialog
                 visible={profileDialogVisible}
-                style={{ width: '650px' }}
+                style={{ width: 'min(650px, 95vw)' }}
+                breakpoints={{ '960px': '92vw', '640px': '96vw' }}
                 onHide={() => setProfileDialogVisible(false)}
                 modal
                 draggable={false}
