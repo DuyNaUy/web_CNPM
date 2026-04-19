@@ -52,6 +52,8 @@ const AccountsPage = () => {
     const [selectedStatus, setSelectedStatus] = useState<boolean | null>(null);
     const toast = useRef<Toast>(null);
 
+    const canEditIdentityFields = !isEdit || account.role === 'admin';
+
     // Load accounts on mount
     useEffect(() => {
         loadAccounts();
@@ -145,7 +147,7 @@ const AccountsPage = () => {
 
     const saveAccount = async () => {
         // Validation
-        if (!account.full_name.trim()) {
+        if (canEditIdentityFields && !account.full_name.trim()) {
             toast.current?.show({
                 severity: 'warn',
                 summary: 'Cảnh báo',
@@ -165,7 +167,7 @@ const AccountsPage = () => {
             return;
         }
 
-        if (!account.phone.trim()) {
+        if (canEditIdentityFields && !account.phone.trim()) {
             toast.current?.show({
                 severity: 'warn',
                 summary: 'Cảnh báo',
@@ -208,12 +210,15 @@ const AccountsPage = () => {
             if (isEdit) {
                 // Update existing account
                 const updateData: any = {
-                    full_name: account.full_name,
-                    phone: account.phone,
                     role: account.role,
                     is_active: account.is_active,
-                    address: account.address
                 };
+
+                if (account.role === 'admin') {
+                    updateData.full_name = account.full_name;
+                    updateData.phone = account.phone;
+                    updateData.address = account.address;
+                }
 
                 response = await userManagementAPI.update(account.id, updateData);
             } else {
@@ -479,7 +484,8 @@ const AccountsPage = () => {
                             <label htmlFor="full_name">
                                 Họ và tên <span className="text-red-500">*</span>
                             </label>
-                            <InputText id="full_name" value={account.full_name} onChange={(e) => onInputChange(e, 'full_name')} required autoFocus />
+                            <InputText id="full_name" value={account.full_name} onChange={(e) => onInputChange(e, 'full_name')} required autoFocus disabled={!canEditIdentityFields} />
+                            {isEdit && !canEditIdentityFields && <small className="text-orange-500">Cần chuyển vai trò sang admin để sửa họ tên.</small>}
                         </div>
                         <div className="field">
                             <label htmlFor="email">
@@ -491,7 +497,7 @@ const AccountsPage = () => {
                             <label htmlFor="phone">
                                 Số điện thoại <span className="text-red-500">*</span>
                             </label>
-                            <InputText id="phone" value={account.phone} onChange={(e) => onInputChange(e, 'phone')} required maxLength={10} />
+                            <InputText id="phone" value={account.phone} onChange={(e) => onInputChange(e, 'phone')} required maxLength={10} disabled={!canEditIdentityFields} />
                         </div>
                         {!isEdit && (
                             <>
@@ -511,7 +517,8 @@ const AccountsPage = () => {
                         )}
                         <div className="field">
                             <label htmlFor="address">Địa chỉ</label>
-                            <InputText id="address" value={account.address || ''} onChange={(e) => onInputChange(e, 'address')} />
+                            <InputText id="address" value={account.address || ''} onChange={(e) => onInputChange(e, 'address')} disabled={!canEditIdentityFields} />
+                            {isEdit && !canEditIdentityFields && <small className="text-orange-500">Chỉ tài khoản admin mới chỉnh sửa được số điện thoại và địa chỉ.</small>}
                         </div>
                         <div className="field">
                             <label htmlFor="role">

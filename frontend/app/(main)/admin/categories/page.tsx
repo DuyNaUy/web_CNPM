@@ -24,6 +24,7 @@ interface Category {
 
 const CategoriesPage = () => {
     const [categories, setCategories] = useState<Category[]>([]);
+    const [totalRecords, setTotalRecords] = useState(0);
     const [loading, setLoading] = useState(false);
 
     const [categoryDialog, setCategoryDialog] = useState(false);
@@ -37,23 +38,34 @@ const CategoriesPage = () => {
         created_at: ''
     });
     const [globalFilter, setGlobalFilter] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [selectedStatus, setSelectedStatus] = useState<string | null>(null);
+    const [first, setFirst] = useState(0);
+    const [rows, setRows] = useState(10);
     const toast = useRef<Toast>(null);
 
-    // Load categories from API
-    useEffect(() => {
-        loadCategories();
-    }, []);
-
-    const loadCategories = async () => {
+    const loadCategories = async (params: { searchText: string; status: string | null; page: number; pageSize: number }) => {
         try {
             setLoading(true);
-            const response = await categoryAPI.getAll();
+            const response = await categoryAPI.getAll({
+                search: params.searchText.trim() || undefined,
+                status: params.status || undefined,
+                page: params.page,
+                page_size: params.pageSize
+            });
+
             if (response.results) {
-                // Paginated response
                 setCategories(response.results);
+                setTotalRecords(response.count || response.results.length);
             } else if (Array.isArray(response)) {
-                // Non-paginated response
                 setCategories(response);
+                setTotalRecords(response.length);
+            } else if (response.data && Array.isArray(response.data)) {
+                setCategories(response.data);
+                setTotalRecords(response.count || response.data.length);
+            } else {
+                setCategories([]);
+                setTotalRecords(0);
             }
         } catch (error: any) {
             toast.current?.show({
@@ -67,10 +79,65 @@ const CategoriesPage = () => {
         }
     };
 
+    useEffect(() => {
+        const timeoutId = setTimeout(() => {
+            setDebouncedSearch(globalFilter);
+        }, 300);
+
+        return () => clearTimeout(timeoutId);
+    }, [globalFilter]);
+
+    useEffect(() => {
+        const page = Math.floor(first / rows) + 1;
+        loadCategories({
+            searchText: debouncedSearch,
+            status: selectedStatus,
+            page,
+            pageSize: rows
+        });
+    }, [debouncedSearch, selectedStatus, first, rows]);
+
     const statuses = [
         { label: 'Hoạt động', value: 'active' },
         { label: 'Ngừng hoạt động', value: 'inactive' }
     ];
+
+    const filterStatuses = [
+        { label: 'Tất cả trạng thái', value: null },
+        { label: 'Hoạt động', value: 'active' },
+        { label: 'Ngừng hoạt động', value: 'inactive' }
+    ];
+
+    const clearFilters = () => {
+        setGlobalFilter('');
+        setSelectedStatus(null);
+        setFirst(0);
+    };
+
+    const handleSearchChange = (value: string) => {
+        setGlobalFilter(value);
+        setFirst(0);
+    };
+
+    const handleStatusChange = (value: string | null) => {
+        setSelectedStatus(value);
+        setFirst(0);
+    };
+
+    const handlePageChange = (event: any) => {
+        setFirst(event.first);
+        setRows(event.rows);
+    };
+
+    const reloadCurrentPage = async () => {
+        const page = Math.floor(first / rows) + 1;
+        await loadCategories({
+            searchText: debouncedSearch,
+            status: selectedStatus,
+            page,
+            pageSize: rows
+        });
+    };
 
     const openNew = () => {
         setCategory({
@@ -136,7 +203,7 @@ const CategoriesPage = () => {
                 });
 
                 // Reload categories list
-                await loadCategories();
+                await reloadCurrentPage();
                 setCategoryDialog(false);
                 setCategory({
                     id: 0,
@@ -197,9 +264,11 @@ const CategoriesPage = () => {
                 life: 3000
             });
 
-            // Cập nhật UI ngay, sau đó đồng bộ lại với server.
-            setCategories((prev) => prev.filter((item) => item.id !== category.id));
-            await loadCategories();
+            if (categories.length === 1 && first > 0) {
+                setFirst(Math.max(first - rows, 0));
+            } else {
+                await reloadCurrentPage();
+            }
             setDeleteCategoryDialog(false);
             setCategory({
                 id: 0,
@@ -257,12 +326,29 @@ const CategoriesPage = () => {
     };
 
     const header = (
-        <div className="flex flex-wrap gap-2 align-items-center justify-content-between">
-            <h4 className="m-0">Quản Lý Danh Mục</h4>
-            <span className="p-input-icon-left">
-                <i className="pi pi-search" />
-                <InputText type="search" placeholder="Tìm kiếm..." onInput={(e) => setGlobalFilter((e.target as HTMLInputElement).value)} />
-            </span>
+        <div className="flex flex-column gap-3">
+            <div className="flex flex-wrap gap-2 align-items-center justify-content-between">
+                <h4 className="m-0">Quản Lý Danh Mục</h4>
+                <span className="p-input-icon-left">
+                    <i className="pi pi-search" />
+                    <InputText type="search" placeholder="Tìm kiếm nhanh..." value={globalFilter} onChange={(e) => handleSearchChange(e.target.value)} />
+                </span>
+            </div>
+
+            <div className="flex flex-wrap gap-3 align-items-center">
+                <div className="flex align-items-center gap-2">
+                    <label htmlFor="statusFilter" className="font-semibold text-sm">
+                        Trạng thái:
+                    </label>
+                    <Dropdown id="statusFilter" value={selectedStatus} options={filterStatuses} onChange={(e) => handleStatusChange(e.value)} placeholder="Chọn trạng thái" style={{ width: '180px' }} />
+                </div>
+
+                {(globalFilter || selectedStatus !== null) && <Button type="button" icon="pi pi-filter-slash" label="Xóa bộ lọc" outlined onClick={clearFilters} size="small" />}
+
+                <div className="ml-auto">
+                    <Tag value={`${totalRecords} danh mục`} severity="info" icon="pi pi-tags" />
+                </div>
+            </div>
         </div>
     );
 
@@ -290,12 +376,15 @@ const CategoriesPage = () => {
                     <DataTable
                         value={categories}
                         dataKey="id"
+                        lazy
                         paginator
-                        rows={10}
+                        first={first}
+                        rows={rows}
+                        totalRecords={totalRecords}
+                        onPage={handlePageChange}
                         rowsPerPageOptions={[5, 10, 25]}
                         paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                         currentPageReportTemplate="Hiển thị {first} đến {last} trong tổng số {totalRecords} danh mục"
-                        globalFilter={globalFilter}
                         header={header}
                         loading={loading}
                     >

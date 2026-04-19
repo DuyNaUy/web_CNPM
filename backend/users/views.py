@@ -80,31 +80,33 @@ class UserLoginView(APIView):
                     'success': False,
                     'message': 'Email hoặc mật khẩu không đúng!'
                 }, status=status.HTTP_401_UNAUTHORIZED)
+
+            # Check account lock status before authenticate.
+            # Django authenticate() returns None for inactive users, which can mask this case.
+            if not user.is_active:
+                return Response({
+                    'success': False,
+                    'message': 'Tài khoản của bạn đã bị khóa!'
+                }, status=status.HTTP_403_FORBIDDEN)
             
             # Authenticate user
             user = authenticate(username=username, password=password)
             
             if user is not None:
-                if user.is_active:
-                    # Generate JWT tokens
-                    refresh = RefreshToken.for_user(user)
-                    
-                    return Response({
-                        'success': True,
-                        'message': 'Đăng nhập thành công!',
-                        'data': {
-                            'user': UserSerializer(user).data,
-                            'tokens': {
-                                'refresh': str(refresh),
-                                'access': str(refresh.access_token),
-                            }
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                
+                return Response({
+                    'success': True,
+                    'message': 'Đăng nhập thành công!',
+                    'data': {
+                        'user': UserSerializer(user).data,
+                        'tokens': {
+                            'refresh': str(refresh),
+                            'access': str(refresh.access_token),
                         }
-                    }, status=status.HTTP_200_OK)
-                else:
-                    return Response({
-                        'success': False,
-                        'message': 'Tài khoản đã bị vô hiệu hóa!'
-                    }, status=status.HTTP_403_FORBIDDEN)
+                    }
+                }, status=status.HTTP_200_OK)
             else:
                 return Response({
                     'success': False,
@@ -220,6 +222,22 @@ class UserManagementViewSet(viewsets.ModelViewSet):
         """Update user"""
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
+
+        target_role = request.data.get('role', instance.role)
+        restricted_fields = ['full_name', 'phone', 'address']
+
+        # Only allow editing identity/contact fields when the account is admin.
+        if target_role != 'admin':
+            attempted_fields = [field for field in restricted_fields if field in request.data]
+            if attempted_fields:
+                return Response({
+                    'success': False,
+                    'message': 'Không thể sửa họ tên, số điện thoại hoặc địa chỉ của tài khoản khách hàng. Hãy chuyển vai trò sang admin trước.',
+                    'errors': {
+                        'role': ['Chỉ tài khoản admin mới được chỉnh sửa các trường thông tin cá nhân này.']
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         
         if serializer.is_valid():

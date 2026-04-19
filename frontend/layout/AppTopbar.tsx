@@ -274,31 +274,16 @@ const AppTopbar = forwardRef<AppTopbarRef>((props, ref) => {
                         </button>
 
                         <div ref={topbarmenuRef} className={classNames('layout-topbar-menu', { 'layout-topbar-menu-mobile-active': layoutState.profileSidebarVisible })}>
-                            {/* User Info Header */}
                             <div className="px-3 py-3 border-bottom-1 surface-border" style={{ background: 'linear-gradient(135deg, #ffb6c1 0%, #ff69b4 100%)' }}>
-                                <div className="flex align-items-center gap-3">
-                                    <Avatar 
-                                        icon="pi pi-user" 
-                                        size="large" 
-                                        shape="circle" 
-                                        style={{ 
-                                            backgroundColor: '#fff', 
-                                            color: '#ff69b4', 
-                                            width: '48px', 
-                                            height: '48px',
-                                            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
-                                        }} 
-                                    />
-                                    <div className="flex flex-column">
-                                        <span className="font-bold text-white" style={{ fontSize: '1.1rem' }}>{user.full_name}</span>
-                                        <span className="text-white text-sm opacity-90">{user.email}</span>
-                                    </div>
+                                <div className="flex flex-column">
+                                    <span className="font-bold text-white" style={{ fontSize: '1.1rem' }}>{user.full_name}</span>
+                                    <span className="text-white text-sm opacity-90">{user.email}</span>
                                 </div>
                             </div>
 
                             <button type="button" className="p-link layout-topbar-button hover:surface-100 transition-colors transition-duration-200" onClick={handleShowProfile} style={{ padding: '1rem 1.5rem' }}>
-                                <i className="pi pi-user" style={{ color: '#ff69b4', fontSize: '1.1rem' }}></i>
-                                <span className="ml-2 font-semibold" style={{ color: '#333' }}>Thông tin cá nhân</span>
+                                <i className="pi pi-user-edit" style={{ color: '#ff69b4', fontSize: '1.1rem' }}></i>
+                                <span className="ml-2 font-semibold" style={{ color: '#333' }}>Sửa thông tin cá nhân</span>
                             </button>
                             <button type="button" className="p-link layout-topbar-button hover:surface-100 transition-colors transition-duration-200" onClick={handleLogout} style={{ padding: '1rem 1.5rem' }}>
                                 <i className="pi pi-sign-out" style={{ color: '#ff69b4', fontSize: '1.1rem' }}></i>

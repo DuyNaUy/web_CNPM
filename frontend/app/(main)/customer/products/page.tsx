@@ -74,6 +74,7 @@ const ProductsPage = () => {
     // cart keeps quantity and selected size per product id
     const [cart, setCart] = useState<{ [key: number]: { qty: number; size: number } }>({});
     const [selectedSizes, setSelectedSizes] = useState<{ [key: number]: number }>({});
+    const [selectedQuantities, setSelectedQuantities] = useState<{ [key: number]: number }>({});
     const [loading, setLoading] = useState(false);
     const [first, setFirst] = useState(0);
     const [rowsPerPage] = useState(12);
@@ -215,6 +216,7 @@ const ProductsPage = () => {
 
     const addToCart = async (product: Product) => {
         const selectedSize = selectedSizes[product.id];
+        const selectedQuantity = selectedQuantities[product.id] ?? 1;
 
         // Nếu có variants, bắt buộc phải chọn size
         if (product.variants && product.variants.length > 0 && !selectedSize) {
@@ -237,6 +239,16 @@ const ProductsPage = () => {
             const selectedVariant = product.variants.find(v => v.size === `${selectedSize}`);
             if (selectedVariant) {
                 itemPrice = selectedVariant.price;
+
+                if (selectedQuantity > selectedVariant.stock) {
+                    toast.current?.show({
+                        severity: 'warn',
+                        summary: 'Cảnh báo',
+                        detail: `Chỉ còn ${selectedVariant.stock} sản phẩm trong kho`,
+                        life: 3000
+                    });
+                    return;
+                }
             }
         }
 
@@ -245,12 +257,12 @@ const ProductsPage = () => {
 
             if (user) {
                 // User đã đăng nhập - gọi API backend
-                const response = await cartAPI.addItem(product.id, 1, sizeStr);
+                const response = await cartAPI.addItem(product.id, selectedQuantity, sizeStr);
                 if (response && response.id) {
                     // Update local cart state
                     setCart((prev) => ({
                         ...prev,
-                        [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size: selectedSize ?? 30 }
+                        [product.id]: { qty: (prev[product.id]?.qty || 0) + selectedQuantity, size: selectedSize ?? 30 }
                     }));
                     // Update topbar cart count via context
                     if (response.total_quantity) {
@@ -259,7 +271,7 @@ const ProductsPage = () => {
                     toast.current?.show({
                         severity: 'success',
                         summary: 'Đã thêm vào giỏ',
-                        detail: `${product.name} (Size ${sizeStr}) đã được thêm vào giỏ hàng`,
+                        detail: `${product.name} (Size ${sizeStr}) x${selectedQuantity} đã được thêm vào giỏ hàng`,
                         life: 3000
                     });
                 } else if (response && response.error) {
@@ -276,7 +288,7 @@ const ProductsPage = () => {
                     product.id,
                     product.name,
                     itemPrice,
-                    1,
+                    selectedQuantity,
                     sizeStr,
                     product.main_image_url || product.main_image || ''
                 );
@@ -288,13 +300,13 @@ const ProductsPage = () => {
                 // Update local cart state
                 setCart((prev) => ({
                     ...prev,
-                    [product.id]: { qty: (prev[product.id]?.qty || 0) + 1, size: selectedSize ?? 30 }
+                    [product.id]: { qty: (prev[product.id]?.qty || 0) + selectedQuantity, size: selectedSize ?? 30 }
                 }));
 
                 toast.current?.show({
                     severity: 'success',
                     summary: 'Đã thêm vào giỏ',
-                    detail: `${product.name} (Size ${sizeStr}) đã được thêm vào giỏ hàng (không cần đăng nhập)`,
+                    detail: `${product.name} (Size ${sizeStr}) x${selectedQuantity} đã được thêm vào giỏ hàng (không cần đăng nhập)`,
                     life: 3000
                 });
             }
@@ -311,6 +323,7 @@ const ProductsPage = () => {
 
     const buyNow = (product: Product) => {
         const selectedSize = selectedSizes[product.id];
+        const selectedQuantity = selectedQuantities[product.id] ?? 1;
 
         // Nếu có variants, bắt buộc phải chọn size
         if (product.variants && product.variants.length > 0 && !selectedSize) {
@@ -335,6 +348,16 @@ const ProductsPage = () => {
             if (variant) {
                 size = variant.size;
                 price = variant.price;
+
+                if (selectedQuantity > variant.stock) {
+                    toast.current?.show({
+                        severity: 'warn',
+                        summary: 'Cảnh báo',
+                        detail: `Chỉ còn ${variant.stock} sản phẩm trong kho`,
+                        life: 3000
+                    });
+                    return;
+                }
             } else {
                 size = selectedSizeStr;
             }
@@ -348,7 +371,7 @@ const ProductsPage = () => {
             id: product.id,
             name: product.name,
             price: price,
-            quantity: 1,
+            quantity: selectedQuantity,
             unit: size,
             size: size,
             image: product.main_image_url || product.main_image
@@ -363,8 +386,20 @@ const ProductsPage = () => {
         setFirst(event.first);
     };
 
+    const handleSizeSelect = (productId: number, value: string | number) => {
+        setSelectedSizes((prev) => ({ ...prev, [productId]: value as any }));
+        setSelectedQuantities((prev) => ({ ...prev, [productId]: 1 }));
+    };
+
     const itemTemplate = (product: Product) => {
         const imageUrl = product.main_image_url || product.main_image || '/demo/images/product/placeholder.png';
+        const selectedQuantity = selectedQuantities[product.id] ?? 1;
+        const hasSelectedSize = selectedSizes[product.id] !== undefined && selectedSizes[product.id] !== null;
+        const availableStock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
+            ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
+            : product.variants && product.variants.length > 0
+                ? product.variants.reduce((sum, v) => sum + v.stock, 0)
+                : product.stock;
 
         return (
             <div className="col-12 sm:col-6 lg:col-4 xl:col-4 p-2">
@@ -390,30 +425,41 @@ const ProductsPage = () => {
                         <div className="flex flex-column gap-3 mb-3">
                             <div className="text-sm text-600">
                                 <span className="font-semibold">Số lượng: </span>
-                                <span className={(() => {
-                                    const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
-                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
-                                        : product.variants && product.variants.length > 0
-                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                            : product.stock;
-                                    return stock <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold';
-                                })()}>
-                                    {(() => {
-                                        const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
-                                            ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
-                                            : product.variants && product.variants.length > 0
-                                                ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                                : product.stock;
-
-                                        if (stock <= 0) {
-                                            return 'Hết hàng';
-                                        }
-                                        return stock;
-                                    })()}
+                                <span className={availableStock <= 0 ? 'text-red-600 font-semibold' : 'text-green-600 font-semibold'}>
+                                    {availableStock <= 0 ? 'Hết hàng' : availableStock}
                                 </span>
                             </div>
                             <div className="text-sm text-600">
-                                <div className="mb-1">Chọn size:</div>
+                                <div className="mb-1 flex align-items-center justify-content-between gap-2">
+                                    <span>Chọn size:</span>
+                                    {hasSelectedSize && (
+                                        <div className="flex align-items-center gap-1">
+                                            <Button
+                                                icon="pi pi-minus"
+                                                className="p-button-sm p-button-outlined"
+                                                onClick={() => setSelectedQuantities((prev) => ({
+                                                    ...prev,
+                                                    [product.id]: Math.max(1, (prev[product.id] ?? 1) - 1)
+                                                }))}
+                                                disabled={selectedQuantity <= 1}
+                                                style={{ width: '1.8rem', height: '1.8rem', padding: 0 }}
+                                            />
+                                            <span className="font-semibold text-900 text-sm" style={{ minWidth: '18px', textAlign: 'center' }}>
+                                                {selectedQuantity}
+                                            </span>
+                                            <Button
+                                                icon="pi pi-plus"
+                                                className="p-button-sm p-button-outlined"
+                                                onClick={() => setSelectedQuantities((prev) => ({
+                                                    ...prev,
+                                                    [product.id]: (prev[product.id] ?? 1) + 1
+                                                }))}
+                                                disabled={availableStock > 0 && selectedQuantity >= availableStock}
+                                                style={{ width: '1.8rem', height: '1.8rem', padding: 0 }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex gap-3">
                                     {product.variants && product.variants.length > 0 ? (
                                         product.variants.map((variant) => (
@@ -430,7 +476,7 @@ const ProductsPage = () => {
                                                     inputId={`size-${product.id}-${variant.size}`}
                                                     name={`size-${product.id}`}
                                                     value={variant.size}
-                                                    onChange={(e) => setSelectedSizes((prev) => ({ ...prev, [product.id]: e.value as any }))}
+                                                    onChange={(e) => handleSizeSelect(product.id, e.value as string)}
                                                     checked={`${selectedSizes[product.id] ?? ''}` === variant.size}
                                                     disabled={variant.stock === 0}
                                                 />
@@ -447,7 +493,7 @@ const ProductsPage = () => {
                                                     inputId={`size-${product.id}-${s}`}
                                                     name={`size-${product.id}`}
                                                     value={s}
-                                                    onChange={(e) => setSelectedSizes((prev) => ({ ...prev, [product.id]: Number(e.value) }))}
+                                                    onChange={(e) => handleSizeSelect(product.id, Number(e.value))}
                                                     checked={(selectedSizes[product.id] ?? 30) === s}
                                                 />
                                                 <span className="text-sm">{s} cm</span>
@@ -496,14 +542,7 @@ const ProductsPage = () => {
                                 icon="pi pi-flash"
                                 className="flex-1"
                                 onClick={() => buyNow(product)}
-                                disabled={(() => {
-                                    const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
-                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
-                                        : product.variants && product.variants.length > 0
-                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                            : product.stock;
-                                    return stock <= 0;
-                                })()}
+                                disabled={availableStock <= 0}
                                 style={{ backgroundColor: '#ff1493', borderColor: '#ff1493', color: 'white', cursor: 'pointer', opacity: 1 }}
                             />
                             <Button
@@ -512,14 +551,7 @@ const ProductsPage = () => {
                                 onClick={() => addToCart(product)}
                                 tooltip="Thêm vào giỏ"
                                 tooltipOptions={{ position: 'top' }}
-                                disabled={(() => {
-                                    const stock = selectedSizes[product.id] && product.variants?.find(v => v.size === `${selectedSizes[product.id]}`)
-                                        ? product.variants.find(v => v.size === `${selectedSizes[product.id]}`)?.stock ?? 0
-                                        : product.variants && product.variants.length > 0
-                                            ? product.variants.reduce((sum, v) => sum + v.stock, 0)
-                                            : product.stock;
-                                    return stock <= 0;
-                                })()}
+                                disabled={availableStock <= 0}
                                 style={{ cursor: 'pointer', opacity: 1 }}
                             />
                         </div>

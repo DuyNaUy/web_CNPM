@@ -41,6 +41,8 @@ interface Product {
     description: string;
     images: string[];
     detailDescription: string;
+    origin?: string;
+    color?: string;
     sold_count?: number;
     variants?: ProductVariant[];
     min_price?: number;
@@ -123,6 +125,8 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                     images: imageUrls,
                     sold_count: Number(p.sold_count || p.soldCount || 0),
                     detailDescription: p.detail_description || p.detailDescription || p.full_description || '',
+                    origin: p.origin || '',
+                    color: p.color || '',
                     variants: p.variants || [],
                     min_price: p.min_price,
                     max_price: p.max_price,
@@ -426,6 +430,17 @@ const ProductDetailPage = ({ params }: { params: { id: string } }) => {
                         {/* Images */}
                         <div className="col-12 md:col-5">
                             <Galleria value={product.images} item={itemTemplate} thumbnail={thumbnailTemplate} numVisible={4} circular showItemNavigators showThumbnails thumbnailsPosition="left" style={{ maxWidth: '100%' }} />
+
+                            <div className="surface-50 border-round p-3 mt-3">
+                                <div className="mb-2">
+                                    <span className="font-semibold text-900">Xuất xứ: </span>
+                                    <span className="text-700">{product.origin || 'Đang cập nhật'}</span>
+                                </div>
+                                <div>
+                                    <span className="font-semibold text-900">Màu sắc: </span>
+                                    <span className="text-700">{product.color || 'Đang cập nhật'}</span>
+                                </div>
+                            </div>
                         </div>
 
                         {/* Product Info */}

@@ -10,6 +10,7 @@ import { Timeline } from 'primereact/timeline';
 import { Card } from 'primereact/card';
 import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import React, { useRef, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { orderAPI } from '@/services/api';
 
 interface OrderItem {
@@ -34,6 +35,7 @@ interface Order {
 }
 
 const OrdersPage = () => {
+    const router = useRouter();
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -145,13 +147,41 @@ const OrdersPage = () => {
             header: 'Yêu cầu hoàn hàng',
             icon: 'pi pi-question-circle',
             accept: () => {
-                setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'returned' } : o)));
+                const firstItem = order.items?.[0];
+                const totalQuantity = order.items?.reduce((sum, item) => sum + item.quantity, 0) || 1;
+                const itemNames = order.items?.map((item) => item.product_name).join(', ') || 'sản phẩm trong đơn hàng';
+                const firstItemPrice = Number(firstItem?.product_price || 0);
+                const fallbackImage = (firstItem as any)?.product_image || (firstItem as any)?.image || null;
+
+                sessionStorage.setItem('ai_product_context', JSON.stringify({
+                    source: 'order-return',
+                    product_id: order.id,
+                    product_name: firstItem?.product_name || `Đơn hàng ${order.order_code}`,
+                    category: 'hoàn hàng',
+                    description: `Yêu cầu hoàn hàng cho đơn ${order.order_code}. Sản phẩm: ${itemNames}`,
+                    detail_description: `Mã đơn: ${order.order_code} | Người nhận: ${order.full_name} | SĐT: ${order.phone} | Địa chỉ: ${order.address}`,
+                    selected_size: firstItem?.unit || 'không áp dụng',
+                    quantity: totalQuantity,
+                    price: firstItemPrice > 0 ? firstItemPrice : order.total_amount,
+                    min_price: firstItemPrice > 0 ? firstItemPrice : order.total_amount,
+                    max_price: firstItemPrice > 0 ? firstItemPrice : order.total_amount,
+                    image: fallbackImage,
+                    timestamp: new Date().toISOString(),
+                    order_id: order.id,
+                    order_code: order.order_code,
+                    auto_send: true
+                }));
+
                 toast.current?.show({
                     severity: 'info',
-                    summary: 'Đã gửi yêu cầu',
-                    detail: 'Yêu cầu hoàn hàng đã được gửi, chúng tôi sẽ liên hệ với bạn sớm',
-                    life: 4000
+                    summary: 'Đang chuyển tư vấn',
+                    detail: 'Bạn sẽ được chuyển đến chatbot để trao đổi hoàn hàng với admin',
+                    life: 2500
                 });
+
+                setTimeout(() => {
+                    router.push('/customer/ai-agent');
+                }, 300);
             },
             acceptLabel: 'Có',
             rejectLabel: 'Không'

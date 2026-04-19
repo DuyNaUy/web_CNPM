@@ -47,7 +47,6 @@ interface Product {
     product_images?: ProductImage[];
     variants?: ProductVariant[];
     origin?: string;
-    size?: string;
     color?: string;
     status: string;
     is_featured?: boolean;
@@ -91,7 +90,6 @@ const ProductsPage = () => {
         description: '',
         detail_description: '',
         origin: '',
-        size: '',
         color: '',
     });
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -212,7 +210,6 @@ const ProductsPage = () => {
             description: '',
             detail_description: '',
             origin: '',
-            size: '',
             color: '',
         });
         setSelectedFile(null);
@@ -241,7 +238,6 @@ const ProductsPage = () => {
             description: '',
             detail_description: '',
             origin: '',
-            size: '',
             color: '',
         });
         setVariants([
@@ -325,10 +321,7 @@ const ProductsPage = () => {
             formData.append('unit', '30cm');
             formData.append('status', product.status);
             formData.append('description', product.description || '');
-
-            if (product.detail_description) {
-                formData.append('detail_description', product.detail_description);
-            }
+            formData.append('detail_description', product.detail_description || '');
             if (product.origin) formData.append('origin', product.origin);
             if (product.color) formData.append('color', product.color);
 
@@ -402,9 +395,9 @@ const ProductsPage = () => {
             // Ensure all fields have default values to avoid undefined
             setProduct({
                 ...fullProduct,
+                description: fullProduct.description || '',
                 detail_description: fullProduct.detail_description || '',
                 origin: fullProduct.origin || '',
-                size: fullProduct.size || '',
                 color: fullProduct.color || ''
             });
 
@@ -846,14 +839,19 @@ const ProductsPage = () => {
                                             {previewImage ? (
                                                 <div className="flex flex-column align-items-center">
                                                     <Image src={previewImage} alt="Preview" width="300" preview />
-                                                    <Button 
-                                                        label="Xóa hình ảnh" 
-                                                        icon="pi pi-times" 
-                                                        className="p-button-danger p-button-sm mt-2"
-                                                        onClick={onFileRemove} 
-                                                        type="button"
-                                                        style={{ backgroundColor: '#ff3366', borderColor: '#ff3366' }}
-                                                    />
+                                                    <div className="w-full mt-3">
+                                                        <FileUpload
+                                                            ref={fileUploadRef}
+                                                            mode="basic"
+                                                            name="image"
+                                                            accept="image/*"
+                                                            maxFileSize={5000000}
+                                                            onSelect={onFileSelect}
+                                                            chooseLabel="Thay thế ảnh chính"
+                                                            className="w-full"
+                                                            auto
+                                                        />
+                                                    </div>
                                                 </div>
                                             ) : (
                                                 <FileUpload ref={fileUploadRef} mode="basic" name="image" accept="image/*" maxFileSize={5000000} onSelect={onFileSelect} chooseLabel="Chọn hình ảnh" className="w-full" auto />
@@ -935,13 +933,6 @@ const ProductsPage = () => {
                                                 Xuất xứ
                                             </label>
                                             <InputText id="origin" value={product.origin} onChange={(e) => onInputChange(e, 'origin')} placeholder="VD: Việt Nam, Nhật Bản..." />
-                                        </div>
-
-                                        <div className="field">
-                                            <label htmlFor="size" className="font-semibold">
-                                                Kích thước
-                                            </label>
-                                            <InputText id="size" value={product.size} onChange={(e) => onInputChange(e, 'size')} placeholder="VD: 30cm, 60cm, 90cm..." />
                                         </div>
 
                                         <div className="field">

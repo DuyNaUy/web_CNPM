@@ -1,5 +1,31 @@
 // API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const normalizeApiBaseUrl = (rawBaseUrl?: string) => {
+    const trimmed = (rawBaseUrl || 'http://localhost:8000').trim().replace(/\/+$/, '');
+    return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+};
+
+const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
+const API_BASE_URL_FALLBACK = API_BASE_URL.includes('localhost')
+    ? API_BASE_URL.replace('localhost', '127.0.0.1')
+    : API_BASE_URL.includes('127.0.0.1')
+    ? API_BASE_URL.replace('127.0.0.1', 'localhost')
+    : null;
+
+const fetchWithApiBaseFallback = async (endpoint: string, options: RequestInit = {}) => {
+    const primaryUrl = `${API_BASE_URL}${endpoint}`;
+
+    try {
+        return await fetch(primaryUrl, options);
+    } catch (error: any) {
+        if (!API_BASE_URL_FALLBACK || error?.name !== 'TypeError') {
+            throw error;
+        }
+
+        const fallbackUrl = `${API_BASE_URL_FALLBACK}${endpoint}`;
+        console.warn(`[API] Primary URL failed (${primaryUrl}), retrying with ${fallbackUrl}`);
+        return await fetch(fallbackUrl, options);
+    }
+};
 
 // Helper function to get auth token
 const getAuthToken = () => {
@@ -62,7 +88,7 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
 
     try {
         console.log(`API Request: ${config.method || 'GET'} ${API_BASE_URL}${endpoint}`);
-        let response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+        let response = await fetchWithApiBaseFallback(endpoint, config);
 
         // Try to parse JSON response
         let data;
@@ -88,7 +114,7 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
             };
             delete configWithoutAuth.headers['Authorization'];
             
-            response = await fetch(`${API_BASE_URL}${endpoint}`, configWithoutAuth);
+            response = await fetchWithApiBaseFallback(endpoint, configWithoutAuth);
             try {
                 data = await response.json();
             } catch (parseError) {
@@ -125,7 +151,7 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
 export const authAPI = {
     register: async (userData: { username: string; email: string; full_name: string; phone: string; password: string; confirm_password: string; role?: string }) => {
         // Don't send token for registration - use fetch directly
-        const response = await fetch(`${API_BASE_URL}/auth/register/`, {
+        const response = await fetchWithApiBaseFallback('/auth/register/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -133,7 +159,13 @@ export const authAPI = {
             body: JSON.stringify(userData)
         });
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.error('JSON Parse Error (register):', parseError);
+            throw new Error(`Server trả về dữ liệu không hợp lệ. Mã lỗi: ${response.status}`);
+        }
 
         if (!response.ok) {
             return data;
@@ -150,7 +182,7 @@ export const authAPI = {
 
     login: async (credentials: { email: string; password: string }) => {
         // Don't send token for login - use fetch directly
-        const response = await fetch(`${API_BASE_URL}/auth/login/`, {
+        const response = await fetchWithApiBaseFallback('/auth/login/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -158,7 +190,13 @@ export const authAPI = {
             body: JSON.stringify(credentials)
         });
 
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch (parseError) {
+            console.error('JSON Parse Error (login):', parseError);
+            throw new Error(`Server trả về dữ liệu không hợp lệ. Mã lỗi: ${response.status}`);
+        }
 
         if (!response.ok) {
             return data;

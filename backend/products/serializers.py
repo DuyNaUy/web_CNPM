@@ -109,7 +109,7 @@ class ProductSerializer(serializers.ModelSerializer):
             'main_image', 'main_image_url', 'images', 'images_list', 'images_data',
             'product_images', 'variants', 'min_price', 'max_price',
             'specifications', 'specifications_dict', 'specifications_data',
-            'origin', 'weight', 'preservation', 'expiry', 'certification',
+            'origin', 'color', 'weight', 'preservation', 'expiry', 'certification',
             'status', 'in_stock',
             'created_at', 'updated_at'
         ]
@@ -203,7 +203,7 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
             'name', 'category', 'price', 'old_price', 'stock', 'unit',
             'description', 'detail_description',
             'main_image', 'images', 'specifications',
-            'origin', 'weight', 'preservation', 'expiry', 'certification',
+            'origin', 'color', 'weight', 'preservation', 'expiry', 'certification',
             'status'
         ]
     

@@ -101,6 +101,9 @@ interface AIProductContext {
   max_price?: number;
   image?: string | null;
   timestamp?: string;
+  order_id?: number;
+  order_code?: string;
+  auto_send?: boolean;
 }
 
 const AI_PRODUCT_CONTEXT_KEY = 'ai_product_context';
@@ -1202,6 +1205,18 @@ export default function AIAgentChat({
   };
 
   const buildProductContextPrompt = (ctx: AIProductContext): string => {
+    if (ctx.source === 'order-return') {
+      const orderCode = ctx.order_code || `#${ctx.order_id || ''}`;
+      const productName = ctx.product_name || 'sản phẩm trong đơn hàng';
+      const quantity = ctx.quantity || 1;
+      const totalText = typeof ctx.price === 'number'
+        ? `${ctx.price.toLocaleString('vi-VN')} VND`
+        : 'không rõ tổng tiền';
+      const orderDetail = ctx.detail_description || '';
+
+      return `Tôi cần hỗ trợ HOÀN HÀNG cho đơn ${orderCode}. Sản phẩm chính: ${productName}, số lượng: ${quantity}, tổng tiền: ${totalText}. Thông tin đơn: ${orderDetail}. Vui lòng chuyển cuộc trò chuyện này cho admin/nhân viên hỗ trợ để xử lý hoàn hàng.`;
+    }
+
     const name = ctx.product_name || 'sản phẩm này';
     const category = ctx.category || 'không rõ danh mục';
     const size = ctx.selected_size || 'chưa chọn';
@@ -1467,6 +1482,34 @@ export default function AIAgentChat({
     setIsLoading(true);
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+      if (pendingProductContext.source === 'order-return') {
+        const supportResponse = await fetchAiEndpoint(
+          `${apiUrl}/api/ai/conversations/${conversationId}/request_human_support/`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (supportResponse.ok) {
+          const supportData = await supportResponse.json();
+          setAiPaused(true);
+          applyQueueStateFromPayload(supportData);
+
+          if (supportData.message) {
+            const supportNotice: Message = {
+              role: 'assistant',
+              content: supportData.message,
+              timestamp: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, supportNotice]);
+          }
+        }
+      }
+
       const response = await fetchAiEndpoint(
         `${apiUrl}/api/ai/conversations/${conversationId}/send_message/`,
         {
@@ -1527,6 +1570,14 @@ export default function AIAgentChat({
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!pendingProductContext || isLoading) return;
+
+    if (pendingProductContext.auto_send || pendingProductContext.source === 'order-return') {
+      void sendPendingProductContext();
+    }
+  }, [pendingProductContext, isLoading]);
 
   const sendMessage = async () => {
     if (!inputValue.trim() || !conversationId) return;
@@ -1907,7 +1958,7 @@ export default function AIAgentChat({
 
       {/* Input Area */}
       <div className={styles.inputContainer}>
-        {pendingProductContext && (
+        {pendingProductContext && !pendingProductContext.auto_send && pendingProductContext.source !== 'order-return' && (
           <div className={styles.pendingProductBar}>
             <div className={styles.pendingProductLeft}>
               <img
