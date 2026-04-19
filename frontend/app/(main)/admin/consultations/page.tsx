@@ -159,6 +159,18 @@ const ConsultationsPage = () => {
 
     try {
       const token = localStorage.getItem('access_token');
+      if (!token) {
+        if (showLoading) {
+          toast.current?.show({
+            severity: 'warn',
+            summary: 'Chưa đăng nhập',
+            detail: 'Vui lòng đăng nhập để xem hội thoại',
+            life: 2500,
+          });
+        }
+        setConversations([]);
+        return;
+      }
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
       const response = await fetch(`${apiUrl}/api/ai/conversations/?limit=200`, {

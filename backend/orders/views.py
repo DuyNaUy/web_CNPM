@@ -3,9 +3,12 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.csrf import csrf_exempt
+from django.db.models import Sum, Count, F, DecimalField, ExpressionWrapper
 from uuid import uuid4
 from decimal import Decimal
+from datetime import datetime, date, time, timedelta
 from .models import Order, OrderItem, Cart, CartItem
 from .serializers import OrderSerializer, OrderCreateSerializer, CartSerializer, CartItemDetailSerializer
 from products.models import Product, ProductVariant
@@ -618,59 +621,122 @@ class OrderViewSet(viewsets.ViewSet):
                 {'error': 'Bạn không có quyền truy cập'},
                 status=status.HTTP_403_FORBIDDEN
             )
-        
-        from django.db.models import Sum, Count, Q
-        from django.db.models.functions import TruncMonth, TruncWeek
-        from datetime import datetime, timedelta
-        from collections import defaultdict
-        
-        total_orders = Order.objects.count()
-        pending_orders = Order.objects.filter(status='pending').count()
-        completed_orders = Order.objects.filter(status='delivered').count()
-        total_revenue = sum(order.total_amount for order in Order.objects.all())
+
+        start_date_str = request.GET.get('start_date', '').strip()
+        end_date_str = request.GET.get('end_date', '').strip()
+        timezone_now = timezone.localtime()
+
+        start_date = None
+        end_date = None
+
+        if start_date_str:
+            start_date = parse_date(start_date_str)
+            if not start_date:
+                return Response(
+                    {'error': 'start_date không hợp lệ. Định dạng đúng: YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if end_date_str:
+            end_date = parse_date(end_date_str)
+            if not end_date:
+                return Response(
+                    {'error': 'end_date không hợp lệ. Định dạng đúng: YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        if start_date and end_date and start_date > end_date:
+            return Response(
+                {'error': 'start_date không được lớn hơn end_date'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        orders_query = Order.objects.all()
+        if start_date:
+            start_datetime = timezone.make_aware(datetime.combine(start_date, time.min))
+            orders_query = orders_query.filter(created_at__gte=start_datetime)
+        if end_date:
+            end_datetime = timezone.make_aware(datetime.combine(end_date, time.max))
+            orders_query = orders_query.filter(created_at__lte=end_datetime)
+
+        total_orders = orders_query.count()
+        pending_orders = orders_query.filter(status='pending').count()
+        completed_orders = orders_query.filter(status='delivered').count()
+        total_revenue = orders_query.aggregate(total=Sum('total_amount'))['total'] or 0
         
         # Tính tỷ lệ hoàn thành
         completion_rate = 0
         if total_orders > 0:
             completion_rate = (completed_orders / total_orders) * 100
         
-        # Doanh thu theo tháng (6 tháng gần nhất)
+        # Doanh thu theo tháng trong khoảng lọc hiện tại (xử lý bằng Python để tránh lỗi timezone DB)
         revenue_by_month = []
-        current_date = datetime.now()
-        for i in range(5, -1, -1):
-            month_date = current_date - timedelta(days=i*30)
-            month_str = f"Tháng {month_date.month}"
-            month_revenue = Order.objects.filter(
-                created_at__year=month_date.year,
-                created_at__month=month_date.month
-            ).aggregate(total=Sum('total_amount'))['total'] or 0
+        monthly_revenue_map = {}
+        weekly_orders_map = {}
+
+        for order in orders_query.only('created_at', 'total_amount'):
+            local_created_at = timezone.localtime(order.created_at)
+
+            month_key = (local_created_at.year, local_created_at.month)
+            monthly_revenue_map[month_key] = monthly_revenue_map.get(month_key, 0.0) + float(order.total_amount or 0)
+
+            iso_year, iso_week, _ = local_created_at.isocalendar()
+            week_key = (iso_year, iso_week)
+            if week_key not in weekly_orders_map:
+                week_start = local_created_at - timedelta(days=local_created_at.weekday())
+                weekly_orders_map[week_key] = {
+                    'orders': 0,
+                    'week_start': week_start
+                }
+            weekly_orders_map[week_key]['orders'] += 1
+
+        for (year, month) in sorted(monthly_revenue_map.keys()):
             revenue_by_month.append({
-                'month': month_str,
-                'revenue': float(month_revenue)
+                'month': f"Tháng {month}/{year}",
+                'revenue': monthly_revenue_map[(year, month)]
             })
-        
-        # Số đơn hàng theo tuần (4 tuần gần nhất)
+
+        # Nếu không chọn bộ lọc thời gian và chưa có dữ liệu theo tháng, trả 6 tháng gần nhất = 0
+        if not revenue_by_month and not (start_date or end_date):
+            for i in range(5, -1, -1):
+                month_date = (timezone_now - timedelta(days=i * 30))
+                revenue_by_month.append({
+                    'month': f"Tháng {month_date.month}/{month_date.year}",
+                    'revenue': 0.0
+                })
+
+        # Số đơn hàng theo tuần trong khoảng lọc hiện tại
         orders_by_week = []
-        for i in range(3, -1, -1):
-            week_start = current_date - timedelta(weeks=i+1)
-            week_end = current_date - timedelta(weeks=i)
-            week_label = f"Tuần {4-i}"
-            week_orders = Order.objects.filter(
-                created_at__gte=week_start,
-                created_at__lt=week_end
-            ).count()
+        for (iso_year, iso_week), data in sorted(weekly_orders_map.items()):
+            week_start = data['week_start']
             orders_by_week.append({
-                'week': week_label,
-                'orders': week_orders
+                'week': f"Tuần {iso_week} ({week_start.strftime('%d/%m')})",
+                'orders': data['orders']
             })
+
+        # Nếu không chọn bộ lọc thời gian và chưa có dữ liệu theo tuần, trả 4 tuần gần nhất = 0
+        if not orders_by_week and not (start_date or end_date):
+            for i in range(3, -1, -1):
+                week_start = timezone_now - timedelta(weeks=i)
+                orders_by_week.append({
+                    'week': f"Tuần {week_start.isocalendar().week} ({week_start.strftime('%d/%m')})",
+                    'orders': 0
+                })
+
+        line_revenue_expr = ExpressionWrapper(
+            F('product_price') * F('quantity'),
+            output_field=DecimalField(max_digits=20, decimal_places=0)
+        )
+
+        order_items_query = OrderItem.objects.filter(order__in=orders_query)
         
         # Doanh thu theo kích thước gấu (từ ProductVariant)
         revenue_by_size = []
-        size_stats = OrderItem.objects.filter(
+        size_stats = order_items_query.filter(
             unit__isnull=False
         ).values('unit').annotate(
-            total_revenue=Sum('product_price'),
-            total_count=Count('id')
+            total_revenue=Sum(line_revenue_expr),
+            total_count=Sum('quantity')
         ).order_by('-total_revenue')
         
         for stat in size_stats:
@@ -683,22 +749,23 @@ class OrderViewSet(viewsets.ViewSet):
         
         # Top sản phẩm bán chạy
         top_products = []
-        product_stats = OrderItem.objects.values(
+        product_stats = order_items_query.values(
             'product__id',
             'product__name',
+            'product_name',
             'product__category__name'
         ).annotate(
             total_sold=Sum('quantity'),
-            total_revenue=Sum('product_price')
+            total_revenue=Sum(line_revenue_expr)
         ).order_by('-total_sold')[:10]
         
         for stat in product_stats:
             top_products.append({
                 'id': stat['product__id'],
-                'name': stat['product__name'],
+                'name': stat['product__name'] or stat['product_name'] or 'Sản phẩm đã xóa',
                 'category': stat['product__category__name'] or 'Chưa phân loại',
                 'sold': stat['total_sold'],
-                'revenue': float(stat['total_revenue'])
+                'revenue': float(stat['total_revenue'] or 0)
             })
         
         return Response({
@@ -711,6 +778,8 @@ class OrderViewSet(viewsets.ViewSet):
             'orders_by_week': orders_by_week,
             'revenue_by_size': revenue_by_size,
             'top_products': top_products,
+            'start_date': start_date_str,
+            'end_date': end_date_str,
         })
     
     @action(detail=False, methods=['get'])

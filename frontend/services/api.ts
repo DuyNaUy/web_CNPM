@@ -534,8 +534,13 @@ export const orderAPI = {
         });
     },
 
-    getStats: async () => {
-        return await apiRequest('/orders/stats/');
+    getStats: async (startDate?: string, endDate?: string) => {
+        const params = new URLSearchParams();
+        if (startDate) params.append('start_date', startDate);
+        if (endDate) params.append('end_date', endDate);
+        const queryString = params.toString();
+
+        return await apiRequest(`/orders/stats/${queryString ? '?' + queryString : ''}`);
     },
 
     exportExcel: async (reportType?: string, startDate?: string, endDate?: string) => {

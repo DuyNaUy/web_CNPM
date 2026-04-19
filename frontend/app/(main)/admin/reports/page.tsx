@@ -11,6 +11,7 @@ import { Calendar } from 'primereact/calendar';
 import { Dropdown } from 'primereact/dropdown';
 import { Toast } from 'primereact/toast';
 import { orderAPI, userManagementAPI } from '@/services/api';
+import styles from './reports.module.css';
 
 interface Stats {
     total_revenue: number;
@@ -39,11 +40,35 @@ const ReportsPage = () => {
         { label: 'Khách hàng', value: 'customers' }
     ];
 
+    const formatDateForApi = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    const getDateRangeParams = () => {
+        let startDate = '';
+        let endDate = '';
+
+        if (selectedDateRange && selectedDateRange.length === 2) {
+            if (selectedDateRange[0]) {
+                startDate = formatDateForApi(selectedDateRange[0]);
+            }
+            if (selectedDateRange[1]) {
+                endDate = formatDateForApi(selectedDateRange[1]);
+            }
+        }
+
+        return { startDate, endDate };
+    };
+
     const loadStats = async () => {
         try {
             setLoading(true);
+            const { startDate, endDate } = getDateRangeParams();
             // Lấy thống kê đơn hàng
-            const response = await orderAPI.getStats();
+            const response = await orderAPI.getStats(startDate, endDate);
             setStats(response);
             
             // Lấy số lượng khách hàng từ quản lý tài khoản
@@ -208,18 +233,7 @@ const ReportsPage = () => {
     const handleExportExcel = async () => {
         try {
             setLoading(true);
-            
-            // Validate date range
-            let startDate = '';
-            let endDate = '';
-            if (selectedDateRange && selectedDateRange.length === 2) {
-                if (selectedDateRange[0]) {
-                    startDate = selectedDateRange[0].toISOString().split('T')[0];
-                }
-                if (selectedDateRange[1]) {
-                    endDate = selectedDateRange[1].toISOString().split('T')[0];
-                }
-            }
+            const { startDate, endDate } = getDateRangeParams();
             
             await orderAPI.exportExcel(reportType, startDate, endDate);
             toast.current?.show({ severity: 'success', summary: 'Thành công', detail: 'Đã xuất Excel', life: 3000 });
@@ -233,18 +247,7 @@ const ReportsPage = () => {
     const handleExportPDF = async () => {
         try {
             setLoading(true);
-            
-            // Validate date range
-            let startDate = '';
-            let endDate = '';
-            if (selectedDateRange && selectedDateRange.length === 2) {
-                if (selectedDateRange[0]) {
-                    startDate = selectedDateRange[0].toISOString().split('T')[0];
-                }
-                if (selectedDateRange[1]) {
-                    endDate = selectedDateRange[1].toISOString().split('T')[0];
-                }
-            }
+            const { startDate, endDate } = getDateRangeParams();
             
             await orderAPI.exportPDF(reportType, startDate, endDate);
             toast.current?.show({ severity: 'success', summary: 'Thành công', detail: 'Đã xuất PDF', life: 3000 });
@@ -253,6 +256,20 @@ const ReportsPage = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleApplyDateFilter = async () => {
+        if (selectedDateRange && selectedDateRange.length === 1) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Thiếu dữ liệu',
+                detail: 'Vui lòng chọn đủ ngày bắt đầu và kết thúc',
+                life: 3000
+            });
+            return;
+        }
+
+        await loadStats();
     };
 
     return (
@@ -308,6 +325,14 @@ const ReportsPage = () => {
                             />
                         </div>
                         <div className="col-12 lg:col-3 flex align-items-end gap-2">
+                            <Button
+                                label="Áp dụng lọc"
+                                icon="pi pi-filter"
+                                className={`${styles.applyFilterButton} flex-1`}
+                                onClick={handleApplyDateFilter}
+                                loading={loading}
+                                size="small"
+                            />
                             <Button 
                                 label="Xuất Excel"
                                 icon="pi pi-file-excel" 
