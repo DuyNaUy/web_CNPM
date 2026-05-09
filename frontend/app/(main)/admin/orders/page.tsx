@@ -10,7 +10,8 @@ import { Toast } from 'primereact/toast';
 import { Toolbar } from 'primereact/toolbar';
 import React, { useRef, useState, useEffect } from 'react';
 import { Tag } from 'primereact/tag';
-import { orderAPI } from '@/services/api';
+import { useRouter } from 'next/navigation';
+import { authAPI, orderAPI } from '@/services/api';
 
 interface OrderItem {
     id: number;
@@ -48,6 +49,7 @@ const OrdersPage = () => {
     const [globalFilter, setGlobalFilter] = useState('');
     const [searchText, setSearchText] = useState('');
     const toast = useRef<Toast>(null);
+    const router = useRouter();
 
     const statuses = [
         { label: 'Chờ xác nhận', value: 'pending' },
@@ -58,8 +60,48 @@ const OrdersPage = () => {
     ];
 
     useEffect(() => {
-        loadOrders();
-    }, []);
+        const verifyAdminAndLoad = async () => {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                toast.current?.show({
+                    severity: 'warn',
+                    summary: 'Phiên đăng nhập đã hết',
+                    detail: 'Vui lòng đăng nhập lại để xem danh sách đơn hàng.',
+                    life: 3000
+                });
+                router.push('/auth/login');
+                return;
+            }
+
+            try {
+                const profileResponse = await authAPI.getProfile();
+                const profile = profileResponse?.data || profileResponse;
+
+                if (!profile || profile.role !== 'admin') {
+                    toast.current?.show({
+                        severity: 'error',
+                        summary: 'Không đủ quyền',
+                        detail: 'Tài khoản này không có quyền quản trị.',
+                        life: 3000
+                    });
+                    router.push('/');
+                    return;
+                }
+
+                loadOrders();
+            } catch (error: any) {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Lỗi xác thực',
+                    detail: error.message || 'Không thể xác thực tài khoản.',
+                    life: 3000
+                });
+                router.push('/auth/login');
+            }
+        };
+
+        void verifyAdminAndLoad();
+    }, [router]);
 
     const loadOrders = async (search?: string) => {
         setLoading(true);
