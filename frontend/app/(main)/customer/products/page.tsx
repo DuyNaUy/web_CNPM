@@ -409,7 +409,7 @@ const ProductsPage = () => {
                     </div>
 
                     <div className="product-image-container mb-3 relative">
-                        <img src={imageUrl} alt={product.name} className="product-image w-full border-round" style={{ height: '220px', objectFit: 'cover' }} />
+                        <img src={imageUrl} alt={product.name} className="product-image w-full border-round" style={{ objectFit: 'cover' }} />
                     </div>
 
                     <div className="product-info">

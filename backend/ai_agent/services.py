@@ -241,23 +241,27 @@ DỮ LIỆU CATALOG THAM KHẢO:
 
         return lines
 
-    def start_conversation(self, user=None) -> ConversationSession:
+    def start_conversation(self, user=None, force_new: bool = False) -> ConversationSession:
         """Bắt đầu một phiên hội thoại mới"""
-        if user is not None:
+        if user is not None and not force_new:
             existing_conversation = (
                 ConversationSession.objects
-                .filter(user=user)
+                .filter(user=user, is_active=True)
                 .order_by('-updated_at')
                 .first()
             )
             if existing_conversation:
                 return existing_conversation
 
+        if user is not None and force_new:
+            ConversationSession.objects.filter(user=user, is_active=True).update(is_active=False)
+
         # Tạo bản ghi trước để lấy ID, sau đó map thành mã phiên dạng số dễ đọc.
         temp_session_id = f"tmp_{uuid.uuid4().hex[:12]}"
         conversation = ConversationSession.objects.create(
             user=user,
-            session_id=temp_session_id
+            session_id=temp_session_id,
+            is_active=True,
         )
         conversation.session_id = str(conversation.id).zfill(6)
         conversation.save(update_fields=['session_id', 'updated_at'])

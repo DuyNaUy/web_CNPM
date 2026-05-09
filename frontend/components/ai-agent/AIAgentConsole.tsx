@@ -55,12 +55,17 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
     return response;
   }, []);
 
-  const handleStartConversation = useCallback(async () => {
+  const handleStartConversation = useCallback(async (forceNew: boolean = false) => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const response = await fetchAiEndpoint(`${apiUrl}/api/ai/conversations/start_conversation/`, {
         method: 'POST',
-        headers: {},
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          force_new: forceNew,
+        }),
       });
 
       if (response.ok) {
@@ -83,7 +88,7 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
       localStorage.removeItem('teddy_ai_session_id');
       setConversationId(null);
       setSelectedRecommendations([]);
-      await handleStartConversation();
+      await handleStartConversation(true);
     } finally {
       isRecoveringSessionRef.current = false;
     }
@@ -95,7 +100,7 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
       setConversationId(null);
       setSelectedRecommendations([]);
       // Start a new one immediately
-      handleStartConversation();
+      handleStartConversation(true);
     }
   };
 
@@ -268,18 +273,10 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
     <div className={styles.console}>
       {!showOrderPreview ? (
         <div className={styles.chatWrapper}>
-          <div className={styles.chatHeader}>
-            <button
-              onClick={handleNewConversation}
-              className={styles.newChatBtn}
-              title="Bắt đầu cuộc trò chuyện mới"
-            >
-              🔄 Chat mới
-            </button>
-          </div>
           <AIAgentChat
             conversationId={conversationId}
             onRecommendationsReceived={handleRecommendationsReceived}
+            onNewConversation={handleNewConversation}
             onConversationNotFound={() => {
               void recoverConversationSession();
             }}

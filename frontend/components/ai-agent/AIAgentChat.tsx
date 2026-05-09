@@ -85,6 +85,7 @@ interface AIAgentChatProps {
   conversationId: string;
   onRecommendationsReceived?: (recommendations: any[]) => void;
   onConversationNotFound?: () => void;
+  onNewConversation?: () => void;
 }
 
 interface AIProductContext {
@@ -1078,6 +1079,7 @@ function ProductCard({ product, conversationId }: { product: Product; conversati
 export default function AIAgentChat({
   conversationId,
   onConversationNotFound,
+  onNewConversation,
 }: AIAgentChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -1095,6 +1097,19 @@ export default function AIAgentChat({
   const hasLoadedProductContextRef = useRef(false);
   const hasHandledConversationNotFoundRef = useRef(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setMessages([]);
+    setInputValue('');
+    setIsLoading(false);
+    setAiPaused(false);
+    setQueuePosition(null);
+    setQueueWaitingTotal(0);
+    setEstimatedWaitMinutes(0);
+    setPendingProductContext(null);
+    hasLoadedProductContextRef.current = false;
+    hasHandledConversationNotFoundRef.current = false;
+  }, [conversationId]);
 
   const fetchAiEndpoint = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
     const token = localStorage.getItem('access_token');
@@ -1995,13 +2010,39 @@ export default function AIAgentChat({
           rows={3}
           disabled={isLoading}
         />
-        <button
-          onClick={sendMessage}
-          disabled={isLoading || !inputValue.trim()}
-          className={styles.sendButton}
-        >
-          {isLoading ? '⏳' : '📤'} Gửi
-        </button>
+        <div className={styles.inputActions}>
+          {onNewConversation && (
+            <button
+              type="button"
+              onClick={onNewConversation}
+              disabled={isLoading}
+              className={styles.newChatButton}
+              title="Bắt đầu cuộc trò chuyện mới"
+            >
+              🔄 Chat mới
+            </button>
+          )}
+          <button
+            onClick={sendMessage}
+            disabled={isLoading || !inputValue.trim()}
+            className={styles.sendButton}
+            aria-label="Gửi tin nhắn"
+            title="Gửi"
+          >
+            {isLoading ? (
+              '⏳'
+            ) : (
+              <svg
+                className={styles.sendIcon}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

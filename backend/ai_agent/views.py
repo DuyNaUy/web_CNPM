@@ -215,7 +215,8 @@ class ConversationViewSet(viewsets.ModelViewSet):
         """Bắt đầu một phiên hội thoại mới"""
         service = AIAgentService()
         user = request.user if request.user.is_authenticated else None
-        conversation = service.start_conversation(user)
+        force_new = bool(request.data.get('force_new'))
+        conversation = service.start_conversation(user, force_new=force_new)
         serializer = self.get_serializer(conversation)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 

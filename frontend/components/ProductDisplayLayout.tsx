@@ -630,7 +630,8 @@ export const ProductDisplayLayout: React.FC<ProductDisplayLayoutProps> = ({
         .product-image-container {
           position: relative;
           width: 100%;
-          height: 200px;
+          aspect-ratio: 1;
+          height: auto;
           background: #f5f5f5;
           overflow: hidden;
         }

@@ -1082,6 +1082,41 @@
   color: #ccc;
 }
 
+.inputActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.newChatButton {
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(230, 58, 108, 0.28);
+  background: #fff;
+  color: #e63a6c;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 10px rgba(230, 58, 108, 0.16);
+}
+
+.newChatButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #ffe9f1 0%, #ffdce7 100%);
+  border-color: rgba(230, 58, 108, 0.4);
+  transform: translateY(-1px);
+}
+
+.newChatButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .sendButton {
   width: 44px;
   height: 44px;
@@ -1098,6 +1133,12 @@
   box-shadow: 0 6px 16px rgba(230, 58, 108, 0.32);
   font-weight: 600;
   font-size: 18px;
+}
+
+.sendIcon {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
 }
 
 .sendButton:hover:not(:disabled) {
@@ -1264,9 +1305,20 @@
     font-size: 13px;
   }
 
+  .newChatButton {
+    height: 40px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
   .sendButton {
     width: 40px;
     height: 40px;
     font-size: 16px;
+  }
+
+  .sendIcon {
+    width: 16px;
+    height: 16px;
   }
 }
