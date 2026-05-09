@@ -592,7 +592,10 @@ Trợ lý:"""
                 'pham', 'phẩm', 'co', 'có', 'khong', 'không', 'nao', 'nào',
                 'va', 'và', 'hoac', 'hoặc', 'nhung', 'nhưng', 'de', 'để',
                 'trong', 'ngoai', 'ngoài', 'gi', 'gì', 'duoc', 'được', 'ah',
-                'a', 'ạ', 'nhe', 'nhé', 'nha', 'nhà', 'em', 'anh', 'chi', 'chị'
+                'a', 'ạ', 'nhe', 'nhé', 'nha', 'nhà', 'em', 'anh', 'chi', 'chị',
+                'gia', 'giá', 'tu', 'từ', 'den', 'đến', 'khoang', 'khoảng',
+                'tam', 'tầm', 'ngan', 'ngàn', 'nghin', 'nghìn', 'tr', 'trieu',
+                'triệu', 'vnd', 'đ', 'dong', 'đồng'
             }
 
             keywords: List[str] = []
@@ -601,6 +604,9 @@ Trợ lý:"""
                 if len(word) < 2:
                     continue
                 if word in common_words:
+                    continue
+                # Bỏ token có chữ số (giá/budget) để tránh khóa vào giá trị tiền tệ.
+                if re.search(r"\d", word):
                     continue
                 # Bỏ token thuần số để tránh nhiễu (giá sẽ được parse riêng)
                 if re.fullmatch(r"\d+", word):
@@ -767,17 +773,23 @@ Trợ lý:"""
         Returns:
             Tuple: (cleaned_response, products_list)
         """
-        result = self.improve_product_extraction(ai_response, user_message)
-        
-        # Format products cho return
+        mentioned_ids = self._find_products_mentioned_in_response(ai_response)
         products = []
-        for product in result['products']:
-            prod_obj = Product.objects.filter(id=product['id']).first()
-            if prod_obj:
-                # Extract variants from product
+
+        if mentioned_ids:
+            product_map = {
+                p.id: p
+                for p in Product.objects.filter(id__in=mentioned_ids, status='active').prefetch_related('variants')
+            }
+
+            for product_id in mentioned_ids:
+                prod_obj = product_map.get(product_id)
+                if not prod_obj:
+                    continue
+
                 variants = []
-                variant_prices = [int(prod_obj.price)]  # Bắt đầu với base price
-                
+                variant_prices = [int(prod_obj.price)]
+
                 if prod_obj.variants.exists():
                     for v in prod_obj.variants.all():
                         variant_price = int(v.price) if v.price else int(prod_obj.price)
@@ -788,28 +800,69 @@ Trợ lý:"""
                             'stock': v.stock
                         })
                         variant_prices.append(variant_price)
-                
-                # Tính min-max price từ base price + tất cả variant prices
+
                 price_range = {
                     'min': min(variant_prices),
                     'max': max(variant_prices)
                 }
-                
-                prod_data = {
-                    'id': product['id'],
-                    'name': product['name'],
-                    'price': product['price'],
-                    'description': product['description'],
-                    'stock': product['stock'],
+
+                products.append({
+                    'id': prod_obj.id,
+                    'name': prod_obj.name,
+                    'price': int(prod_obj.price),
+                    'description': prod_obj.description or '',
+                    'stock': prod_obj.stock,
                     'image_url': self._get_product_image_url(prod_obj),
                     'unit': prod_obj.unit if hasattr(prod_obj, 'unit') else '',
-                    'variants': variants,  # Add variants array
-                    'quantity': 1,  # Default quantity
-                    'price_range': price_range  # Min-max price range
-                }
-                products.append(prod_data)
+                    'variants': variants,
+                    'quantity': 1,
+                    'price_range': price_range
+                })
 
-        response_seed = result['cleaned_response']
+            response_seed = self._clean_response_text(ai_response, [p['name'] for p in products])
+        else:
+            result = self.improve_product_extraction(ai_response, user_message)
+            
+            # Format products cho return
+            for product in result['products']:
+                prod_obj = Product.objects.filter(id=product['id']).first()
+                if prod_obj:
+                    # Extract variants from product
+                    variants = []
+                    variant_prices = [int(prod_obj.price)]  # Bắt đầu với base price
+                    
+                    if prod_obj.variants.exists():
+                        for v in prod_obj.variants.all():
+                            variant_price = int(v.price) if v.price else int(prod_obj.price)
+                            variants.append({
+                                'id': v.id,
+                                'size': v.size,
+                                'price': variant_price,
+                                'stock': v.stock
+                            })
+                            variant_prices.append(variant_price)
+                    
+                    # Tính min-max price từ base price + tất cả variant prices
+                    price_range = {
+                        'min': min(variant_prices),
+                        'max': max(variant_prices)
+                    }
+                    
+                    prod_data = {
+                        'id': product['id'],
+                        'name': product['name'],
+                        'price': product['price'],
+                        'description': product['description'],
+                        'stock': product['stock'],
+                        'image_url': self._get_product_image_url(prod_obj),
+                        'unit': prod_obj.unit if hasattr(prod_obj, 'unit') else '',
+                        'variants': variants,  # Add variants array
+                        'quantity': 1,  # Default quantity
+                        'price_range': price_range  # Min-max price range
+                    }
+                    products.append(prod_data)
+
+            response_seed = result['cleaned_response']
 
         if not products:
             is_price_query = self._is_price_query(user_message or '')
@@ -827,6 +880,27 @@ Trợ lý:"""
         )
 
         return aligned_response, products
+
+    def _find_products_mentioned_in_response(self, ai_response: str) -> List[int]:
+        """
+        Tìm các sản phẩm được nhắc trực tiếp trong câu trả lời của AI.
+        Trả về danh sách id theo thứ tự xuất hiện.
+        """
+        response_text = re.sub(r"\s+", " ", (ai_response or '').lower()).strip()
+        if not response_text:
+            return []
+
+        matches = []
+        for product in Product.objects.filter(status='active').values('id', 'name'):
+            name = (product.get('name') or '').lower().strip()
+            if not name:
+                continue
+            pos = response_text.find(name)
+            if pos != -1:
+                matches.append((pos, product['id']))
+
+        matches.sort(key=lambda item: item[0])
+        return [item[1] for item in matches[:5]]
 
     def _align_response_with_products(self, original_response: str, products: List[Dict], user_message: str = None) -> str:
         """
