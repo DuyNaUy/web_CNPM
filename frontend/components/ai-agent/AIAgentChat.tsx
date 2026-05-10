@@ -1831,6 +1831,21 @@ export default function AIAgentChat({
     return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
   };
 
+  const formatDisplayMessage = (content: string) => {
+    if (!content) return '';
+    let normalized = content.replace(/^\s*\*\s+/gm, '⭐ ');
+    normalized = normalized.replace(/\*\*/g, '').replace(/__/g, '');
+    normalized = normalized.replace(/`/g, '');
+    return normalized;
+  };
+
+  const sanitizeUserInput = (content: string) => {
+    if (!content) return '';
+    let normalized = content.replace(/\*\*/g, '').replace(/__/g, '');
+    normalized = normalized.replace(/`/g, '');
+    return normalized;
+  };
+
   if (!conversationId) {
     console.warn('[AIAgentChat] conversationId is null/undefined');
     return (
@@ -1882,7 +1897,7 @@ export default function AIAgentChat({
                   </div>
 
                   {msg.content && !(msg.role === 'user' && msg.products && msg.products.length > 0) && (
-                    <p className={styles.messageText}>{msg.content}</p>
+                    <p className={styles.messageText}>{formatDisplayMessage(msg.content)}</p>
                   )}
                   
                   {/* Product Display */}
@@ -2003,8 +2018,23 @@ export default function AIAgentChat({
         )}
         <textarea
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={(e) => setInputValue(sanitizeUserInput(e.target.value))}
           onKeyPress={handleKeyPress}
+          onPaste={(e) => {
+            const pastedText = e.clipboardData.getData('text');
+            if (!pastedText) return;
+            e.preventDefault();
+            const cleaned = sanitizeUserInput(pastedText);
+            const target = e.currentTarget;
+            const start = target.selectionStart ?? target.value.length;
+            const end = target.selectionEnd ?? target.value.length;
+            const nextValue = `${target.value.slice(0, start)}${cleaned}${target.value.slice(end)}`;
+            setInputValue(nextValue);
+            requestAnimationFrame(() => {
+              const cursor = start + cleaned.length;
+              target.setSelectionRange(cursor, cursor);
+            });
+          }}
           placeholder="Nhập câu hỏi của bạn..."
           className={styles.textInput}
           rows={3}

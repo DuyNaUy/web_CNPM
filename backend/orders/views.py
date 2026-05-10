@@ -624,6 +624,7 @@ class OrderViewSet(viewsets.ViewSet):
 
         start_date_str = request.GET.get('start_date', '').strip()
         end_date_str = request.GET.get('end_date', '').strip()
+        category_id_str = request.GET.get('category_id', '').strip()
         timezone_now = timezone.localtime()
 
         start_date = None
@@ -651,6 +652,16 @@ class OrderViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        category_id = None
+        if category_id_str:
+            try:
+                category_id = int(category_id_str)
+            except ValueError:
+                return Response(
+                    {'error': 'category_id không hợp lệ. Vui lòng truyền số nguyên'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         orders_query = Order.objects.all()
         if start_date:
             start_datetime = timezone.make_aware(datetime.combine(start_date, time.min))
@@ -659,10 +670,28 @@ class OrderViewSet(viewsets.ViewSet):
             end_datetime = timezone.make_aware(datetime.combine(end_date, time.max))
             orders_query = orders_query.filter(created_at__lte=end_datetime)
 
+        if category_id:
+            orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
+
+        line_revenue_expr = ExpressionWrapper(
+            F('product_price') * F('quantity'),
+            output_field=DecimalField(max_digits=20, decimal_places=0)
+        )
+
+        order_items_query = OrderItem.objects.filter(order__in=orders_query)
+        if category_id:
+            order_items_query = order_items_query.filter(product__category_id=category_id)
+
         total_orders = orders_query.count()
         pending_orders = orders_query.filter(status='pending').count()
         completed_orders = orders_query.filter(status='delivered').count()
         total_revenue = orders_query.aggregate(total=Sum('total_amount'))['total'] or 0
+        total_customers = orders_query.values('user_id').distinct().count()
+
+        if category_id:
+            total_orders = order_items_query.values('order_id').distinct().count()
+            total_revenue = order_items_query.aggregate(total=Sum(line_revenue_expr))['total'] or 0
+            total_customers = orders_query.values('user_id').distinct().count()
         
         # Tính tỷ lệ hoàn thành
         completion_rate = 0
@@ -674,21 +703,39 @@ class OrderViewSet(viewsets.ViewSet):
         monthly_revenue_map = {}
         weekly_orders_map = {}
 
-        for order in orders_query.only('created_at', 'total_amount'):
-            local_created_at = timezone.localtime(order.created_at)
+        if category_id:
+            for item in order_items_query.select_related('order').only('order__created_at', 'product_price', 'quantity'):
+                local_created_at = timezone.localtime(item.order.created_at)
 
-            month_key = (local_created_at.year, local_created_at.month)
-            monthly_revenue_map[month_key] = monthly_revenue_map.get(month_key, 0.0) + float(order.total_amount or 0)
+                month_key = (local_created_at.year, local_created_at.month)
+                line_revenue = float(item.product_price or 0) * item.quantity
+                monthly_revenue_map[month_key] = monthly_revenue_map.get(month_key, 0.0) + line_revenue
 
-            iso_year, iso_week, _ = local_created_at.isocalendar()
-            week_key = (iso_year, iso_week)
-            if week_key not in weekly_orders_map:
-                week_start = local_created_at - timedelta(days=local_created_at.weekday())
-                weekly_orders_map[week_key] = {
-                    'orders': 0,
-                    'week_start': week_start
-                }
-            weekly_orders_map[week_key]['orders'] += 1
+                iso_year, iso_week, _ = local_created_at.isocalendar()
+                week_key = (iso_year, iso_week)
+                if week_key not in weekly_orders_map:
+                    week_start = local_created_at - timedelta(days=local_created_at.weekday())
+                    weekly_orders_map[week_key] = {
+                        'order_ids': set(),
+                        'week_start': week_start
+                    }
+                weekly_orders_map[week_key]['order_ids'].add(item.order_id)
+        else:
+            for order in orders_query.only('created_at', 'total_amount'):
+                local_created_at = timezone.localtime(order.created_at)
+
+                month_key = (local_created_at.year, local_created_at.month)
+                monthly_revenue_map[month_key] = monthly_revenue_map.get(month_key, 0.0) + float(order.total_amount or 0)
+
+                iso_year, iso_week, _ = local_created_at.isocalendar()
+                week_key = (iso_year, iso_week)
+                if week_key not in weekly_orders_map:
+                    week_start = local_created_at - timedelta(days=local_created_at.weekday())
+                    weekly_orders_map[week_key] = {
+                        'orders': 0,
+                        'week_start': week_start
+                    }
+                weekly_orders_map[week_key]['orders'] += 1
 
         for (year, month) in sorted(monthly_revenue_map.keys()):
             revenue_by_month.append({
@@ -709,9 +756,10 @@ class OrderViewSet(viewsets.ViewSet):
         orders_by_week = []
         for (iso_year, iso_week), data in sorted(weekly_orders_map.items()):
             week_start = data['week_start']
+            orders_count = len(data['order_ids']) if 'order_ids' in data else data['orders']
             orders_by_week.append({
                 'week': f"Tuần {iso_week} ({week_start.strftime('%d/%m')})",
-                'orders': data['orders']
+                'orders': orders_count
             })
 
         # Nếu không chọn bộ lọc thời gian và chưa có dữ liệu theo tuần, trả 4 tuần gần nhất = 0
@@ -723,13 +771,6 @@ class OrderViewSet(viewsets.ViewSet):
                     'orders': 0
                 })
 
-        line_revenue_expr = ExpressionWrapper(
-            F('product_price') * F('quantity'),
-            output_field=DecimalField(max_digits=20, decimal_places=0)
-        )
-
-        order_items_query = OrderItem.objects.filter(order__in=orders_query)
-        
         # Doanh thu theo kích thước gấu (từ ProductVariant)
         revenue_by_size = []
         size_stats = order_items_query.filter(
@@ -774,6 +815,7 @@ class OrderViewSet(viewsets.ViewSet):
             'completed_orders': completed_orders,
             'total_revenue': float(total_revenue),
             'completion_rate': round(completion_rate, 1),
+            'total_customers': total_customers,
             'revenue_by_month': revenue_by_month,
             'orders_by_week': orders_by_week,
             'revenue_by_size': revenue_by_size,
@@ -796,6 +838,8 @@ class OrderViewSet(viewsets.ViewSet):
         report_type = request.GET.get('report_type', 'revenue')
         start_date = request.GET.get('start_date', '')
         end_date = request.GET.get('end_date', '')
+        category_id_str = request.GET.get('category_id', '').strip()
+        category_id_str = request.GET.get('category_id', '').strip()
         
         wb = Workbook()
         ws = wb.active
@@ -809,12 +853,36 @@ class OrderViewSet(viewsets.ViewSet):
             bottom=Side(style='thin')
         )
         
+        category_id = None
+        if category_id_str:
+            try:
+                category_id = int(category_id_str)
+            except ValueError:
+                return Response(
+                    {'error': 'category_id không hợp lệ. Vui lòng truyền số nguyên'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        category_id = None
+        if category_id_str:
+            try:
+                category_id = int(category_id_str)
+            except ValueError:
+                return Response(
+                    {'error': 'category_id không hợp lệ. Vui lòng truyền số nguyên'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         # Filter orders by date range
         orders_query = Order.objects.all()
         if start_date:
             orders_query = orders_query.filter(created_at__gte=start_date)
         if end_date:
             orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
+        if category_id:
+            orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
+        if category_id:
+            orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
         
         if report_type == 'revenue':
             ws.title = "Doanh Thu"
@@ -909,6 +977,10 @@ class OrderViewSet(viewsets.ViewSet):
             
             # Get order items in date range
             order_items_query = OrderItem.objects.filter(order__in=orders_query)
+            if category_id:
+                order_items_query = order_items_query.filter(product__category__id=category_id)
+            if category_id:
+                order_items_query = order_items_query.filter(product__category_id=category_id)
             product_stats = order_items_query.values('product__id', 'product__name', 'product__category__name').annotate(
                 total_sold=Sum('quantity'),
                 total_revenue=Sum('quantity') * Sum('product_price')

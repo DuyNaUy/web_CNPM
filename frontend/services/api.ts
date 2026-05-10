@@ -534,21 +534,23 @@ export const orderAPI = {
         });
     },
 
-    getStats: async (startDate?: string, endDate?: string) => {
+    getStats: async (startDate?: string, endDate?: string, categoryId?: number | null) => {
         const params = new URLSearchParams();
         if (startDate) params.append('start_date', startDate);
         if (endDate) params.append('end_date', endDate);
+        if (categoryId) params.append('category_id', categoryId.toString());
         const queryString = params.toString();
 
         return await apiRequest(`/orders/stats/${queryString ? '?' + queryString : ''}`);
     },
 
-    exportExcel: async (reportType?: string, startDate?: string, endDate?: string) => {
+    exportExcel: async (reportType?: string, startDate?: string, endDate?: string, categoryId?: number | null) => {
         const token = getAuthToken();
         const params = new URLSearchParams();
         if (reportType) params.append('report_type', reportType);
         if (startDate) params.append('start_date', startDate);
         if (endDate) params.append('end_date', endDate);
+        if (categoryId) params.append('category_id', categoryId.toString());
         
         const url = `${API_BASE_URL}/orders/export_excel/${params.toString() ? '?' + params.toString() : ''}`;
         const response = await fetch(url, {
@@ -567,12 +569,13 @@ export const orderAPI = {
         document.body.removeChild(a);
     },
 
-    exportPDF: async (reportType?: string, startDate?: string, endDate?: string) => {
+    exportPDF: async (reportType?: string, startDate?: string, endDate?: string, categoryId?: number | null) => {
         const token = getAuthToken();
         const params = new URLSearchParams();
         if (reportType) params.append('report_type', reportType);
         if (startDate) params.append('start_date', startDate);
         if (endDate) params.append('end_date', endDate);
+        if (categoryId) params.append('category_id', categoryId.toString());
         
         const url = `${API_BASE_URL}/orders/export_pdf/${params.toString() ? '?' + params.toString() : ''}`;
         const response = await fetch(url, {

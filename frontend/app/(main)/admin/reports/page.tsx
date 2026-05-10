@@ -10,7 +10,7 @@ import { ChartData, ChartOptions } from 'chart.js';
 import { Calendar } from 'primereact/calendar';
 import { Dropdown } from 'primereact/dropdown';
 import { Toast } from 'primereact/toast';
-import { orderAPI, userManagementAPI } from '@/services/api';
+import { categoryAPI, orderAPI } from '@/services/api';
 import styles from './reports.module.css';
 
 interface Stats {
@@ -24,12 +24,18 @@ interface Stats {
     top_products: Array<{id: number, name: string, category: string, sold: number, revenue: number}>;
 }
 
+interface CategoryOption {
+    id: number;
+    name: string;
+}
+
 const ReportsPage = () => {
     const [selectedDateRange, setSelectedDateRange] = useState<Date[] | null>(null);
     const [reportType, setReportType] = useState('revenue');
+    const [categories, setCategories] = useState<CategoryOption[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
     const [stats, setStats] = useState<Stats | null>(null);
-    const [totalCustomers, setTotalCustomers] = useState(0);
     const { layoutConfig } = useContext(LayoutContext);
     const toast = useRef<Toast>(null);
 
@@ -68,27 +74,9 @@ const ReportsPage = () => {
             setLoading(true);
             const { startDate, endDate } = getDateRangeParams();
             // Lấy thống kê đơn hàng
-            const response = await orderAPI.getStats(startDate, endDate);
+            const response = await orderAPI.getStats(startDate, endDate, selectedCategory);
             setStats(response);
             
-            // Lấy số lượng khách hàng từ quản lý tài khoản
-            try {
-                const usersResponse = await userManagementAPI.getAll({ role: 'customer' });
-                console.log('Users Response:', usersResponse);
-                
-                if (usersResponse.data && Array.isArray(usersResponse.data)) {
-                    // Backend trả về {success: true, data: [...]}
-                    setTotalCustomers(usersResponse.data.length);
-                } else if (usersResponse.results) {
-                    // Trường hợp có pagination
-                    setTotalCustomers(usersResponse.count || usersResponse.results.length);
-                } else if (Array.isArray(usersResponse)) {
-                    // Trường hợp trả về array trực tiếp
-                    setTotalCustomers(usersResponse.length);
-                }
-            } catch (userError) {
-                console.error('Không thể lấy số lượng khách hàng:', userError);
-            }
         } catch (error: any) {
             toast.current?.show({
                 severity: 'error',
@@ -103,6 +91,23 @@ const ReportsPage = () => {
 
     useEffect(() => {
         loadStats();
+    }, []);
+
+    const loadCategories = async () => {
+        try {
+            const response = await categoryAPI.getActive();
+            if (response.results) {
+                setCategories(response.results);
+            } else if (Array.isArray(response)) {
+                setCategories(response);
+            }
+        } catch (error: any) {
+            console.error('Không thể tải danh mục:', error);
+        }
+    };
+
+    useEffect(() => {
+        loadCategories();
     }, []);
 
     // Biểu đồ doanh thu theo tháng
@@ -235,7 +240,7 @@ const ReportsPage = () => {
             setLoading(true);
             const { startDate, endDate } = getDateRangeParams();
             
-            await orderAPI.exportExcel(reportType, startDate, endDate);
+            await orderAPI.exportExcel(reportType, startDate, endDate, selectedCategory);
             toast.current?.show({ severity: 'success', summary: 'Thành công', detail: 'Đã xuất Excel', life: 3000 });
         } catch (error: any) {
             toast.current?.show({ severity: 'error', summary: 'Lỗi', detail: error.message, life: 3000 });
@@ -249,7 +254,7 @@ const ReportsPage = () => {
             setLoading(true);
             const { startDate, endDate } = getDateRangeParams();
             
-            await orderAPI.exportPDF(reportType, startDate, endDate);
+            await orderAPI.exportPDF(reportType, startDate, endDate, selectedCategory);
             toast.current?.show({ severity: 'success', summary: 'Thành công', detail: 'Đã xuất PDF', life: 3000 });
         } catch (error: any) {
             toast.current?.show({ severity: 'error', summary: 'Lỗi', detail: error.message, life: 3000 });
@@ -295,7 +300,7 @@ const ReportsPage = () => {
             <div className="col-12">
                 <div className="card">
                     <div className="grid">
-                        <div className="col-12 lg:col-4">
+                        <div className="col-12 lg:col-3">
                             <label htmlFor="reportType" className="font-semibold block mb-2">
                                 <i className="pi pi-file mr-2"></i>Loại báo cáo
                             </label>
@@ -308,7 +313,20 @@ const ReportsPage = () => {
                                 className="w-full" 
                             />
                         </div>
-                        <div className="col-12 lg:col-5">
+                        <div className="col-12 lg:col-3">
+                            <label htmlFor="categoryFilter" className="font-semibold block mb-2">
+                                <i className="pi pi-tags mr-2"></i>Danh mục
+                            </label>
+                            <Dropdown
+                                id="categoryFilter"
+                                value={selectedCategory}
+                                options={[{ label: 'Tất cả', value: null }, ...categories.map((category) => ({ label: category.name, value: category.id }))]}
+                                onChange={(e) => setSelectedCategory(e.value)}
+                                placeholder="Chọn danh mục"
+                                className="w-full"
+                            />
+                        </div>
+                        <div className="col-12 lg:col-4">
                             <label htmlFor="dateRange" className="font-semibold block mb-2">
                                 <i className="pi pi-calendar mr-2"></i>Khoảng thời gian
                             </label>
@@ -324,7 +342,7 @@ const ReportsPage = () => {
                                 showIcon
                             />
                         </div>
-                        <div className="col-12 lg:col-3 flex align-items-end gap-2">
+                        <div className="col-12 lg:col-12 flex align-items-end gap-2">
                             <Button
                                 label="Áp dụng lọc"
                                 icon="pi pi-filter"
@@ -394,7 +412,7 @@ const ReportsPage = () => {
                     <div className="flex justify-content-between mb-3">
                         <div>
                             <span className="block text-500 font-medium mb-3">👥 Tổng Khách Hàng</span>
-                            <div className="text-900 font-bold text-2xl">{totalCustomers}</div>
+                            <div className="text-900 font-bold text-2xl">{stats?.total_customers || 0}</div>
                         </div>
                         <div className="flex align-items-center justify-content-center bg-red-100 border-round" style={{ width: '3rem', height: '3rem' }}>
                             <i className="pi pi-users text-red-500" style={{ fontSize: '1.5rem' }} />

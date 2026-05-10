@@ -79,7 +79,7 @@ DỮ LIỆU CATALOG THAM KHẢO:
             String chứa danh sách sản phẩm được format
         """
         try:
-            products = Product.objects.filter(status='active').select_related('category')
+            products = Product.objects.filter(status='active').select_related('category').prefetch_related('variants')
             
             if not products.exists():
                 return ""
@@ -92,8 +92,20 @@ DỮ LIỆU CATALOG THAM KHẢO:
             for product in products_list:
                 category_name = product.category.name if product.category else 'Khác'
                 category_buckets[category_name].append(product)
-                prices.append(int(product.price))
-                if product.stock > 0:
+
+                variant_prices = [int(product.price)]
+                if product.variants.exists():
+                    variant_prices.extend([
+                        int(v.price) if v.price else int(product.price)
+                        for v in product.variants.all()
+                    ])
+                prices.extend(variant_prices)
+
+                total_stock = product.stock
+                if product.variants.exists():
+                    total_stock = sum(v.stock for v in product.variants.all())
+
+                if total_stock > 0:
                     in_stock_count += 1
 
             min_price = min(prices) if prices else 0
@@ -113,7 +125,15 @@ DỮ LIỆU CATALOG THAM KHẢO:
             )
 
             for idx, (category_name, items) in enumerate(sorted_categories[:12], 1):
-                item_prices = [int(p.price) for p in items]
+                item_prices = []
+                for p in items:
+                    variant_prices = [int(p.price)]
+                    if p.variants.exists():
+                        variant_prices.extend([
+                            int(v.price) if v.price else int(p.price)
+                            for v in p.variants.all()
+                        ])
+                    item_prices.extend(variant_prices)
                 category_min = min(item_prices) if item_prices else 0
                 category_max = max(item_prices) if item_prices else 0
                 top_seller = sorted(items, key=lambda p: (p.sold_count, p.rating), reverse=True)[0]
@@ -188,7 +208,11 @@ DỮ LIỆU CATALOG THAM KHẢO:
         Chuẩn hóa dữ liệu sản phẩm thành block ngắn gọn để đưa vào prompt runtime.
         """
         category_name = product.category.name if product.category else 'Khác'
-        stock_status = 'Còn hàng' if product.stock > 0 else 'Hết hàng'
+        total_stock = product.stock
+        if product.variants.exists():
+            total_stock = sum(v.stock for v in product.variants.all())
+
+        stock_status = 'Còn hàng' if total_stock > 0 else 'Hết hàng'
 
         min_variant_price = int(product.price)
         max_variant_price = int(product.price)
@@ -217,7 +241,7 @@ DỮ LIỆU CATALOG THAM KHẢO:
         lines = [
             f"- ID {product.id} | Tên: {product.name}",
             f"  Giá: {int(product.price):,}đ | Khoảng giá biến thể: {min_variant_price:,}đ-{max_variant_price:,}đ",
-            f"  Danh mục: {category_name} | Tình trạng: {stock_status} | Tồn kho: {product.stock}",
+            f"  Danh mục: {category_name} | Tình trạng: {stock_status} | Tồn kho: {total_stock}",
             f"  Đánh giá: {float(product.rating):.1f}/5 ({product.reviews_count} lượt) | Đã bán: {product.sold_count}",
         ]
 
@@ -494,29 +518,11 @@ Trợ lý:"""
 
             if intent_products:
                 for item in intent_products[:5]:
-                    product = Product.objects.filter(id=item['id'], status='active').first()
+                    product = Product.objects.filter(id=item['id'], status='active').prefetch_related('variants').first()
                     if not product:
                         continue
 
-                    variants = []
-                    if product.variants.exists():
-                        variants = [{
-                            'id': v.id,
-                            'size': v.size,
-                            'price': int(v.price) if v.price else int(product.price),
-                            'stock': v.stock
-                        } for v in product.variants.all()]
-
-                    products_data.append({
-                        'id': product.id,
-                        'name': product.name,
-                        'price': int(product.price),
-                        'stock': product.stock,
-                        'image_url': self._get_product_image_url(product),
-                        'unit': product.unit if hasattr(product, 'unit') else '',
-                        'variants': variants,
-                        'quantity': 1
-                    })
+                    products_data.append(self._build_product_payload(product, extra=item, quantity=1))
             elif keywords:
                 # Search products by keywords
                 search_terms = price_focus_keywords if (is_strict_price_query and price_focus_keywords) else keywords
@@ -529,6 +535,44 @@ Trợ lý:"""
             # Nếu không tìm được trực tiếp theo intent/keyword, fallback sang best-sellers.
             if not products_data and not is_strict_price_query:
                 products_data = self.get_product_recommendations(limit=5)
+
+            if products_data:
+                product_ids = [item.get('id') for item in products_data if item.get('id')]
+                product_map = {
+                    p.id: p
+                    for p in Product.objects.filter(id__in=product_ids, status='active').prefetch_related('variants')
+                }
+                normalized_products = []
+                for item in products_data:
+                    prod_obj = product_map.get(item.get('id'))
+                    if not prod_obj:
+                        continue
+                    normalized_products.append(self._build_product_payload(prod_obj, extra=item, quantity=item.get('quantity', 1)))
+                products_data = normalized_products
+
+            min_price, max_price = self._parse_budget_from_message(user_message)
+            if min_price is not None or max_price is not None:
+                range_min = min_price if min_price is not None else 0
+                range_max = max_price if max_price is not None else 10**12
+
+                def _get_payload_range(payload: Dict) -> tuple:
+                    variants = payload.get('variants') or []
+                    base_price = int(payload.get('price', 0) or 0)
+                    prices = [base_price]
+                    if variants:
+                        prices.extend([
+                            int(v.get('price', base_price) or base_price)
+                            for v in variants
+                        ])
+                    return (min(prices), max(prices))
+
+                filtered_products = []
+                for item in products_data:
+                    item_min, item_max = _get_payload_range(item)
+                    if item_max >= range_min and item_min <= range_max:
+                        filtered_products.append(item)
+
+                products_data = filtered_products
             
             # Tạo response text
             if products_data:
@@ -551,6 +595,11 @@ Trợ lý:"""
                     ai_response = (
                         "Mình chưa đủ thông tin để báo đúng giá sản phẩm bạn đang hỏi. "
                         "Bạn gửi giúp mình tên sản phẩm cụ thể hoặc mã sản phẩm để mình báo giá chính xác ngay nhé."
+                    )
+                elif min_price is not None or max_price is not None:
+                    ai_response = (
+                        "Hiện tại mình chưa tìm thấy sản phẩm trong khoảng giá bạn yêu cầu. "
+                        "Bạn muốn mình gợi ý các mẫu gần mức giá này nhất không?"
                     )
                 else:
                     ai_response = (
@@ -660,6 +709,20 @@ Trợ lý:"""
         if range_match:
             min_price = _to_vnd(range_match.group(1), range_match.group(2) or '')
             max_price = _to_vnd(range_match.group(3), range_match.group(4) or '')
+            if min_price is not None and max_price is not None:
+                return (min(min_price, max_price), max(min_price, max_price))
+
+        # Parse dạng "200k - 500k" hoặc "200k-500k"
+        dash_range_match = re.search(
+            r"(\d[\d\.,]*)\s*(k|nghin|nghìn|ngan|ngàn|tr|triệu|m|đ|vnd)?\s*[-–~]\s*"
+            r"(\d[\d\.,]*)\s*(k|nghin|nghìn|ngan|ngàn|tr|triệu|m|đ|vnd)?",
+            text
+        )
+        if dash_range_match:
+            unit_left = dash_range_match.group(2) or ''
+            unit_right = dash_range_match.group(4) or unit_left
+            min_price = _to_vnd(dash_range_match.group(1), unit_left)
+            max_price = _to_vnd(dash_range_match.group(3), unit_right)
             if min_price is not None and max_price is not None:
                 return (min(min_price, max_price), max(min_price, max_price))
 
@@ -787,37 +850,7 @@ Trợ lý:"""
                 if not prod_obj:
                     continue
 
-                variants = []
-                variant_prices = [int(prod_obj.price)]
-
-                if prod_obj.variants.exists():
-                    for v in prod_obj.variants.all():
-                        variant_price = int(v.price) if v.price else int(prod_obj.price)
-                        variants.append({
-                            'id': v.id,
-                            'size': v.size,
-                            'price': variant_price,
-                            'stock': v.stock
-                        })
-                        variant_prices.append(variant_price)
-
-                price_range = {
-                    'min': min(variant_prices),
-                    'max': max(variant_prices)
-                }
-
-                products.append({
-                    'id': prod_obj.id,
-                    'name': prod_obj.name,
-                    'price': int(prod_obj.price),
-                    'description': prod_obj.description or '',
-                    'stock': prod_obj.stock,
-                    'image_url': self._get_product_image_url(prod_obj),
-                    'unit': prod_obj.unit if hasattr(prod_obj, 'unit') else '',
-                    'variants': variants,
-                    'quantity': 1,
-                    'price_range': price_range
-                })
+                products.append(self._build_product_payload(prod_obj, quantity=1))
 
             response_seed = self._clean_response_text(ai_response, [p['name'] for p in products])
         else:
@@ -825,44 +858,46 @@ Trợ lý:"""
             
             # Format products cho return
             for product in result['products']:
-                prod_obj = Product.objects.filter(id=product['id']).first()
+                prod_obj = Product.objects.filter(id=product['id']).prefetch_related('variants').first()
                 if prod_obj:
-                    # Extract variants from product
-                    variants = []
-                    variant_prices = [int(prod_obj.price)]  # Bắt đầu với base price
-                    
-                    if prod_obj.variants.exists():
-                        for v in prod_obj.variants.all():
-                            variant_price = int(v.price) if v.price else int(prod_obj.price)
-                            variants.append({
-                                'id': v.id,
-                                'size': v.size,
-                                'price': variant_price,
-                                'stock': v.stock
-                            })
-                            variant_prices.append(variant_price)
-                    
-                    # Tính min-max price từ base price + tất cả variant prices
-                    price_range = {
-                        'min': min(variant_prices),
-                        'max': max(variant_prices)
-                    }
-                    
-                    prod_data = {
-                        'id': product['id'],
-                        'name': product['name'],
-                        'price': product['price'],
-                        'description': product['description'],
-                        'stock': product['stock'],
-                        'image_url': self._get_product_image_url(prod_obj),
-                        'unit': prod_obj.unit if hasattr(prod_obj, 'unit') else '',
-                        'variants': variants,  # Add variants array
-                        'quantity': 1,  # Default quantity
-                        'price_range': price_range  # Min-max price range
-                    }
-                    products.append(prod_data)
+                    products.append(self._build_product_payload(prod_obj, extra=product, quantity=1))
 
             response_seed = result['cleaned_response']
+
+        def _get_payload_price_range(payload: Dict) -> tuple:
+            variants = payload.get('variants') or []
+            base_price = int(payload.get('price', 0) or 0)
+            prices = [base_price]
+            if variants:
+                prices.extend([
+                    int(v.get('price', base_price) or base_price)
+                    for v in variants
+                ])
+            return (min(prices), max(prices))
+
+        min_price, max_price = self._parse_budget_from_message(user_message or '')
+        if min_price is not None or max_price is not None:
+            range_min = min_price if min_price is not None else 0
+            range_max = max_price if max_price is not None else 10**12
+            products = [
+                p for p in products
+                if _get_payload_price_range(p)[1] >= range_min and _get_payload_price_range(p)[0] <= range_max
+            ]
+
+            if min_price is not None and max_price is not None:
+                range_label = f"{min_price:,}đ - {max_price:,}đ"
+            elif min_price is not None:
+                range_label = f"từ {min_price:,}đ trở lên"
+            else:
+                range_label = f"đến {max_price:,}đ"
+
+            if products:
+                response_seed = f"Mình đã lọc các sản phẩm trong khoảng {range_label}. Bạn tham khảo các mẫu dưới đây nhé."
+            else:
+                response_seed = (
+                    f"Hiện tại mình chưa tìm thấy sản phẩm trong khoảng {range_label}. "
+                    "Bạn muốn mình gợi ý mức giá gần nhất không?"
+                )
 
         if not products:
             is_price_query = self._is_price_query(user_message or '')
@@ -909,6 +944,13 @@ Trợ lý:"""
         """
         response_text = (original_response or '').strip()
         if response_text:
+            if products and user_message:
+                min_price, max_price = self._parse_budget_from_message(user_message)
+                if self._is_price_query(user_message) or min_price is not None or max_price is not None:
+                    price_lines = [self._build_exact_price_line(p) for p in products[:5]]
+                    if price_lines:
+                        price_block = "Giá hiện tại theo hệ thống:\n" + "\n".join([f"- {line}" for line in price_lines])
+                        return f"{response_text}\n\n{price_block}".strip()
             return response_text
 
         if products:
@@ -1069,6 +1111,12 @@ Trợ lý:"""
         if not cleaned_text:
             return ""
 
+        # Thay bullet dạng * thành icon ngôi sao để dễ nhìn.
+        cleaned_text = re.sub(r"^\s*\*\s+", "⭐ ", cleaned_text, flags=re.MULTILINE)
+
+        # Loại bỏ dấu ** để tránh hiển thị markdown thô.
+        cleaned_text = cleaned_text.replace("**", "")
+
         # Chỉ nén số dòng trống dư thừa để tránh phá format câu trả lời gốc.
         cleaned_text = re.sub(r"\n{3,}", "\n\n", cleaned_text)
         return cleaned_text
@@ -1176,13 +1224,8 @@ Trợ lý:"""
             if product.old_price and product.price and product.old_price > product.price:
                 discount_percentage = int(((product.old_price - product.price) / product.old_price) * 100)
             
-            # Tính min-max price
-            min_price = int(product.price)
-            max_price = int(product.price)
-            if variants:
-                prices = [v['price'] for v in variants]
-                min_price = min(prices + [int(product.price)])
-                max_price = max(prices + [int(product.price)])
+            total_stock = self._calculate_total_stock(product)
+            price_payload = self._build_price_range_payload(int(product.price), variants)
             
             return {
                 'id': product.id,
@@ -1193,7 +1236,8 @@ Trợ lý:"""
                 'price': int(product.price),
                 'old_price': int(product.old_price) if product.old_price else None,
                 'discount_percentage': discount_percentage,
-                'stock': product.stock,
+                'stock': total_stock,
+                'total_stock': total_stock,
                 'unit': product.unit,
                 'rating': float(product.rating),
                 'reviews_count': product.reviews_count,
@@ -1208,9 +1252,10 @@ Trợ lý:"""
                 'origin': product.origin or '',
                 'guarantee': product.guarantee or '',
                 'variants': variants,
-                'min_price': min_price,
-                'max_price': max_price,
-                'in_stock': product.stock > 0
+                'min_price': price_payload['min_price'],
+                'max_price': price_payload['max_price'],
+                'price_range': price_payload['price_range'],
+                'in_stock': total_stock > 0
             }
         except Product.DoesNotExist:
             return None
@@ -1395,6 +1440,89 @@ Trợ lý:"""
                 image_url = base_url.rstrip('/') + image_url
             return image_url
         return None
+
+    def _get_product_price_range(self, product: Product) -> tuple:
+        prices = [int(product.price)]
+        if product.variants.exists():
+            prices.extend([
+                int(v.price) if v.price else int(product.price)
+                for v in product.variants.all()
+            ])
+        return (min(prices), max(prices))
+
+    def _get_price_range_for_filter(self, product: Product, min_target: int, max_target: int) -> bool:
+        min_price, max_price = self._get_product_price_range(product)
+        return max_price >= min_target and min_price <= max_target
+
+    def _calculate_total_stock(self, product: Product) -> int:
+        if product.variants.exists():
+            return sum(v.stock for v in product.variants.all())
+        return int(product.stock or 0)
+
+    def _build_variants_payload(self, product: Product) -> List[Dict]:
+        if not product.variants.exists():
+            return []
+        return [
+            {
+                'id': v.id,
+                'size': v.size,
+                'price': int(v.price) if v.price else int(product.price),
+                'stock': v.stock
+            }
+            for v in product.variants.all()
+        ]
+
+    def _build_price_range_payload(self, base_price: int, variants: List[Dict]) -> Dict:
+        prices = [base_price]
+        if variants:
+            prices.extend([int(v.get('price', base_price) or base_price) for v in variants])
+
+        min_price = min(prices) if prices else base_price
+        max_price = max(prices) if prices else base_price
+
+        return {
+            'min_price': min_price,
+            'max_price': max_price,
+            'price_range': {
+                'min': min_price,
+                'max': max_price
+            }
+        }
+
+    def _build_product_payload(self, product: Product, extra: Optional[Dict] = None, quantity: Optional[int] = None) -> Dict:
+        variants = self._build_variants_payload(product)
+        base_price = int(product.price)
+        total_stock = self._calculate_total_stock(product)
+        price_payload = self._build_price_range_payload(base_price, variants)
+
+        payload = {
+            'id': product.id,
+            'name': product.name,
+            'price': base_price,
+            'description': product.description or '',
+            'stock': total_stock,
+            'total_stock': total_stock,
+            'image_url': self._get_product_image_url(product),
+            'unit': product.unit if hasattr(product, 'unit') else '',
+            'variants': variants,
+            'rating': float(product.rating),
+            'sold_count': product.sold_count,
+            'in_stock': total_stock > 0,
+            **price_payload
+        }
+
+        if quantity is not None:
+            payload['quantity'] = quantity
+
+        if extra:
+            for key in [
+                'category', 'similarity', 'total_score', 'semantic_boost',
+                'budget_relation', 'budget_priority', 'price_gap'
+            ]:
+                if key in extra:
+                    payload[key] = extra[key]
+
+        return payload
     
     def search_products_by_keyword(self, keyword: str, limit: int = 10) -> List[Dict]:
         """
@@ -1418,30 +1546,10 @@ Trợ lý:"""
             
             result = []
             for product in products:
-                # Get variants if exist
-                variants = []
-                if product.variants.exists():
-                    variants = [
-                        {
-                            'id': v.id,
-                            'size': v.size,
-                            'price': int(v.price) if v.price else int(product.price),
-                            'stock': v.stock
-                        }
-                        for v in product.variants.all()
-                    ]
-                
-                result.append({
-                    'id': product.id,
-                    'name': product.name,
-                    'price': int(product.price),
-                    'category': product.category.name if product.category else None,
-                    'description': product.description or '',
-                    'rating': float(product.rating),
-                    'stock': product.stock,
-                    'image_url': self._get_product_image_url(product),
-                    'variants': variants
-                })
+                result.append(self._build_product_payload(
+                    product,
+                    extra={'category': product.category.name if product.category else None}
+                ))
             
             return result
         except Exception as e:
@@ -1467,30 +1575,10 @@ Trợ lý:"""
             
             result = []
             for product in products:
-                # Get variants if exist
-                variants = []
-                if product.variants.exists():
-                    variants = [
-                        {
-                            'id': v.id,
-                            'size': v.size,
-                            'price': int(v.price) if v.price else int(product.price),
-                            'stock': v.stock
-                        }
-                        for v in product.variants.all()
-                    ]
-                
-                result.append({
-                    'id': product.id,
-                    'name': product.name,
-                    'price': int(product.price),
-                    'category': product.category.name if product.category else None,
-                    'description': product.description or '',
-                    'rating': float(product.rating),
-                    'stock': product.stock,
-                    'image_url': self._get_product_image_url(product),
-                    'variants': variants
-                })
+                result.append(self._build_product_payload(
+                    product,
+                    extra={'category': product.category.name if product.category else None}
+                ))
             
             return result
         except Exception as e:
@@ -1532,33 +1620,11 @@ Trợ lý:"""
             
             result = []
             for product in products:
-                # Get variants if exist
-                variants = []
-                if product.variants.exists():
-                    variants = [
-                        {
-                            'id': v.id,
-                            'size': v.size,
-                            'price': int(v.price) if v.price else int(product.price),
-                            'stock': v.stock
-                        }
-                        for v in product.variants.all()
-                    ]
-                
-                result.append({
-                    'id': product.id,
-                    'name': product.name,
-                    'price': int(product.price),
-                    'category': product.category.name if product.category else None,
-                    'description': product.description or '',
-                    'stock': product.stock,
-                    'unit': product.unit if hasattr(product, 'unit') else '',
-                    'sold_count': product.sold_count,
-                    'rating': float(product.rating),
-                    'image_url': self._get_product_image_url(product),
-                    'quantity': 1,  # Default quantity for recommendations
-                    'variants': variants
-                })
+                result.append(self._build_product_payload(
+                    product,
+                    extra={'category': product.category.name if product.category else None},
+                    quantity=1
+                ))
             
             return result
         except Exception as e:
@@ -1646,7 +1712,7 @@ Trợ lý:"""
             is_budget_query = target_budget is not None
             is_strict_price_query = is_price_query and not is_budget_query
 
-            candidates = Product.objects.filter(status='active').select_related('category')
+            candidates = Product.objects.filter(status='active').select_related('category').prefetch_related('variants')
 
             if keywords or constraint_terms:
                 keyword_query = Q()
@@ -1690,10 +1756,20 @@ Trợ lý:"""
             candidates_list = list(candidates)
             if not candidates_list and is_discovery_query:
                 candidates_list = list(
-                    Product.objects.filter(status='active').select_related('category').order_by('-sold_count', '-rating')[:40]
+                    Product.objects.filter(status='active').select_related('category').prefetch_related('variants').order_by('-sold_count', '-rating')[:40]
                 )
             if not candidates_list:
                 return []
+
+            if min_price is not None or max_price is not None:
+                range_min = min_price if min_price is not None else 0
+                range_max = max_price if max_price is not None else 10**12
+                candidates_list = [
+                    p for p in candidates_list
+                    if self._get_price_range_for_filter(p, range_min, range_max)
+                ]
+                if not candidates_list:
+                    return []
 
             semantic_boost_map = {}
             if user_message and len(query_text) >= 3:
@@ -1711,7 +1787,7 @@ Trợ lý:"""
 
                 strict_budget_candidates = [
                     p for p in candidates_list
-                    if strict_min <= int(p.price) <= strict_max
+                    if self._get_price_range_for_filter(p, strict_min, strict_max)
                 ]
 
                 if strict_budget_candidates:
@@ -1722,7 +1798,7 @@ Trợ lý:"""
                     expanded_min = max(target_budget - expanded_delta, 0)
                     expanded_candidates = [
                         p for p in candidates_list
-                        if expanded_min <= int(p.price) <= expanded_max
+                        if self._get_price_range_for_filter(p, expanded_min, expanded_max)
                     ]
                     if expanded_candidates:
                         candidates_list = expanded_candidates
@@ -1732,6 +1808,7 @@ Trợ lý:"""
 
             for product in candidates_list:
                 product_price = int(product.price)
+                product_min_price, product_max_price = self._get_product_price_range(product)
                 name_text = (product.name or '').lower()
                 category_text = (product.category.name if product.category else '').lower()
                 desc_text = (product.description or '').lower()
@@ -1803,22 +1880,22 @@ Trợ lý:"""
                 price_gap = 10**9
 
                 if target_budget is not None and target_budget > 0:
-                    price_gap = abs(product_price - target_budget)
-
-                    if product_price <= target_budget:
-                        if budget_delta is not None and product_price >= max(target_budget - budget_delta, 0):
-                            budget_relation = 'within_budget'
-                            budget_score += 0.45
-                        else:
-                            budget_relation = 'below_budget'
-                            budget_score += 0.2
-                    else:
-                        if budget_delta is not None and product_price <= target_budget + budget_delta:
+                    if product_min_price <= target_budget <= product_max_price:
+                        price_gap = 0
+                        budget_relation = 'within_budget'
+                        budget_score += 0.45
+                    elif target_budget < product_min_price:
+                        price_gap = product_min_price - target_budget
+                        if budget_delta is not None and product_min_price <= target_budget + budget_delta:
                             budget_relation = 'slightly_above_budget'
                             budget_score += 0.32
                         else:
                             budget_relation = 'over_budget'
                             budget_score += 0.05
+                    else:
+                        price_gap = target_budget - product_max_price
+                        budget_relation = 'below_budget'
+                        budget_score += 0.2
 
                     closeness_bonus = max(0.0, 0.18 - ((price_gap / target_budget) * 0.18))
                     budget_score += closeness_bonus
@@ -1859,6 +1936,8 @@ Trợ lý:"""
                     'id': product.id,
                     'name': product.name,
                     'price': product_price,
+                    'min_price': product_min_price,
+                    'max_price': product_max_price,
                     'description': product.description or '',
                     'stock': product.stock,
                     'sold_count': product.sold_count,
