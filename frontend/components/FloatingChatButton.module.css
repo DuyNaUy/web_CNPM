@@ -13,6 +13,49 @@
   justify-content: flex-end;
 }
 
+.socialStack {
+  position: absolute;
+  right: 4px;
+  bottom: 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.socialButton {
+  min-width: 64px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #fff;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.socialButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
+}
+
+.socialZalo {
+  background: linear-gradient(135deg, #0068ff 0%, #00b7ff 100%);
+}
+
+.socialFacebook {
+  background: linear-gradient(135deg, #1877f2 0%, #4267b2 100%);
+}
+
+.socialTikTok {
+  background: linear-gradient(135deg, #111111 0%, #ff0050 100%);
+}
+
 .floatingButton {
   width: 60px;
   height: 60px;
@@ -211,6 +254,18 @@
   .container {
     right: 15px;
     bottom: 20px;
+  }
+
+  .socialStack {
+    bottom: 62px;
+    right: 0;
+    gap: 6px;
+  }
+
+  .socialButton {
+    min-width: 58px;
+    height: 30px;
+    font-size: 11px;
   }
 
   .wrapper {

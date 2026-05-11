@@ -662,6 +662,11 @@ class OrderViewSet(viewsets.ViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+        category_name = 'Tất cả'
+        if category_id:
+            from categories.models import Category
+            category_name = Category.objects.filter(id=category_id).values_list('name', flat=True).first() or 'Không xác định'
+
         orders_query = Order.objects.all()
         if start_date:
             start_datetime = timezone.make_aware(datetime.combine(start_date, time.min))
@@ -839,7 +844,6 @@ class OrderViewSet(viewsets.ViewSet):
         start_date = request.GET.get('start_date', '')
         end_date = request.GET.get('end_date', '')
         category_id_str = request.GET.get('category_id', '').strip()
-        category_id_str = request.GET.get('category_id', '').strip()
         
         wb = Workbook()
         ws = wb.active
@@ -863,15 +867,10 @@ class OrderViewSet(viewsets.ViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-        category_id = None
-        if category_id_str:
-            try:
-                category_id = int(category_id_str)
-            except ValueError:
-                return Response(
-                    {'error': 'category_id không hợp lệ. Vui lòng truyền số nguyên'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        category_name = 'Tất cả'
+        if category_id:
+            from categories.models import Category
+            category_name = Category.objects.filter(id=category_id).values_list('name', flat=True).first() or 'Không xác định'
 
         # Filter orders by date range
         orders_query = Order.objects.all()
@@ -879,8 +878,6 @@ class OrderViewSet(viewsets.ViewSet):
             orders_query = orders_query.filter(created_at__gte=start_date)
         if end_date:
             orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
-        if category_id:
-            orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
         if category_id:
             orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
         
@@ -894,6 +891,8 @@ class OrderViewSet(viewsets.ViewSet):
             # Date range info
             ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
             ws['A2'].alignment = Alignment(horizontal="center")
+            ws['A3'] = f'Danh mục: {category_name}'
+            ws['A3'].alignment = Alignment(horizontal="center")
             
             headers = ['Mã ĐH', 'Khách hàng', 'Ngày', 'Tổng tiền', 'Trạng thái', 'Thanh toán']
             for col, header in enumerate(headers, start=1):
@@ -932,6 +931,8 @@ class OrderViewSet(viewsets.ViewSet):
             
             ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
             ws['A2'].alignment = Alignment(horizontal="center")
+            ws['A3'] = f'Danh mục: {category_name}'
+            ws['A3'].alignment = Alignment(horizontal="center")
             
             headers = ['Mã ĐH', 'Khách hàng', 'SĐT', 'Địa chỉ', 'Tổng tiền', 'Trạng thái', 'Ngày']
             for col, header in enumerate(headers, start=1):
@@ -965,6 +966,8 @@ class OrderViewSet(viewsets.ViewSet):
             
             ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
             ws['A2'].alignment = Alignment(horizontal="center")
+            ws['A3'] = f'Danh mục: {category_name}'
+            ws['A3'].alignment = Alignment(horizontal="center")
             
             headers = ['STT', 'Sản phẩm', 'Danh mục', 'Đã bán', 'Giá', 'Doanh thu']
             for col, header in enumerate(headers, start=1):
@@ -978,7 +981,7 @@ class OrderViewSet(viewsets.ViewSet):
             # Get order items in date range
             order_items_query = OrderItem.objects.filter(order__in=orders_query)
             if category_id:
-                order_items_query = order_items_query.filter(product__category__id=category_id)
+                order_items_query = order_items_query.filter(product__category_id=category_id)
             if category_id:
                 order_items_query = order_items_query.filter(product__category_id=category_id)
             product_stats = order_items_query.values('product__id', 'product__name', 'product__category__name').annotate(
@@ -1008,6 +1011,8 @@ class OrderViewSet(viewsets.ViewSet):
             
             ws['A2'] = f'Từ ngày: {start_date if start_date else "Tất cả"} - Đến ngày: {end_date if end_date else "Tất cả"}'
             ws['A2'].alignment = Alignment(horizontal="center")
+            ws['A3'] = f'Danh mục: {category_name}'
+            ws['A3'].alignment = Alignment(horizontal="center")
             
             headers = ['Khách hàng', 'Email', 'SĐT', 'Số đơn', 'Tổng chi tiêu', 'Ngày đầu']
             for col, header in enumerate(headers, start=1):
@@ -1065,6 +1070,21 @@ class OrderViewSet(viewsets.ViewSet):
         doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
         elements = []
         styles = getSampleStyleSheet()
+
+        category_id = None
+        if category_id_str:
+            try:
+                category_id = int(category_id_str)
+            except ValueError:
+                return Response(
+                    {'error': 'category_id không hợp lệ. Vui lòng truyền số nguyên'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        category_name = 'Tat ca'
+        if category_id:
+            from categories.models import Category
+            category_name = Category.objects.filter(id=category_id).values_list('name', flat=True).first() or 'Khong xac dinh'
         
         # Filter orders by date range
         orders_query = Order.objects.all()
@@ -1072,12 +1092,16 @@ class OrderViewSet(viewsets.ViewSet):
             orders_query = orders_query.filter(created_at__gte=start_date)
         if end_date:
             orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
+        if category_id:
+            orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
         
         if report_type == 'revenue':
             title = Paragraph('<para align=center><b>BAO CAO DOANH THU - WEB_TEDDY</b></para>', styles['Title'])
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
+            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
+            elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
             
             orders = orders_query.order_by('-created_at')[:100]
@@ -1115,6 +1139,8 @@ class OrderViewSet(viewsets.ViewSet):
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
+            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
+            elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
             
             orders = orders_query.order_by('-created_at')[:100]
@@ -1146,6 +1172,8 @@ class OrderViewSet(viewsets.ViewSet):
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
+            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
+            elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
             
             order_items_query = OrderItem.objects.filter(order__in=orders_query)
@@ -1182,6 +1210,8 @@ class OrderViewSet(viewsets.ViewSet):
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
+            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
+            elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
             
             customer_stats = orders_query.values('user__username', 'email', 'phone').annotate(
