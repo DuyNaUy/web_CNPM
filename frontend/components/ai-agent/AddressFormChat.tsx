@@ -202,7 +202,6 @@ export default function AddressFormChat({
           >
             <option value="cod">Thanh toán khi nhận hàng (COD)</option>
             <option value="momo">Momo</option>
-            <option value="vnpay">VNPay</option>
             <option value="banking">Chuyển khoản ngân hàng</option>
           </select>
         </div>

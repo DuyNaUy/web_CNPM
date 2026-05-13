@@ -378,13 +378,6 @@ const CheckoutPage = () => {
                             </label>
                         </div>
                         <div className="flex align-items-center">
-                            <RadioButton inputId="vnpay" name="payment" value="vnpay" onChange={(e) => setPaymentMethod(e.value)} checked={paymentMethod === 'vnpay'} />
-                            <label htmlFor="vnpay" className="ml-2">
-                                <i className="pi pi-credit-card mr-2"></i>
-                                Thanh toán qua VNPay
-                            </label>
-                        </div>
-                        <div className="flex align-items-center">
                             <RadioButton inputId="momo" name="payment" value="momo" onChange={(e) => setPaymentMethod(e.value)} checked={paymentMethod === 'momo'} />
                             <label htmlFor="momo" className="ml-2">
                                 <i className="pi pi-wallet mr-2"></i>

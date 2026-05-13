@@ -534,12 +534,6 @@ export const orderAPI = {
         });
     },
 
-    updateRefundStatus: async (order_id: number, refund_status: string) => {
-        return await apiRequest('/orders/update_refund_status/', {
-            method: 'POST',
-            body: JSON.stringify({ order_id, refund_status })
-        });
-    },
 
     cancelOrder: async (order_id: number) => {
         return await apiRequest('/orders/cancel_order/', {

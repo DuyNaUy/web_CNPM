@@ -36,7 +36,6 @@ interface Order {
     district: string;
     note: string;
     payment_status: string;
-    refund_status: string;
     subtotal: number;
     shipping_fee: number;
     items: OrderItem[];
@@ -90,6 +89,12 @@ const OrdersPage = () => {
                 }
 
                 loadOrders();
+
+                const refreshId = window.setInterval(() => {
+                    loadOrders(searchText);
+                }, 15000);
+
+                return () => window.clearInterval(refreshId);
             } catch (error: any) {
                 toast.current?.show({
                     severity: 'error',
@@ -101,8 +106,19 @@ const OrdersPage = () => {
             }
         };
 
-        void verifyAdminAndLoad();
-    }, [router]);
+        let cleanup: (() => void) | undefined;
+        void verifyAdminAndLoad().then((result) => {
+            if (typeof result === 'function') {
+                cleanup = result;
+            }
+        });
+
+        return () => {
+            if (cleanup) {
+                cleanup();
+            }
+        };
+    }, [router, searchText]);
 
     const loadOrders = async (search?: string) => {
         setLoading(true);
@@ -221,37 +237,6 @@ const OrdersPage = () => {
         }
     };
 
-    const updateRefundStatus = async (newStatus: string) => {
-        if (!order) {
-            return;
-        }
-
-        try {
-            const response = await orderAPI.updateRefundStatus(order.id, newStatus);
-            if (response && response.id) {
-                const _orders = [...orders];
-                const index = _orders.findIndex((o) => o.id === order.id);
-                if (index >= 0) {
-                    _orders[index].refund_status = newStatus;
-                    setOrders(_orders);
-                }
-                setOrder({ ...order, refund_status: newStatus });
-                toast.current?.show({
-                    severity: 'success',
-                    summary: 'Thành công',
-                    detail: 'Cập nhật trạng thái hoàn tiền thành công',
-                    life: 3000
-                });
-            }
-        } catch (error: any) {
-            toast.current?.show({
-                severity: 'error',
-                summary: 'Lỗi',
-                detail: error.message || 'Không thể cập nhật trạng thái hoàn tiền',
-                life: 3000
-            });
-        }
-    };
 
     const leftToolbarTemplate = () => {
         return (
@@ -291,20 +276,10 @@ const OrdersPage = () => {
         return <Tag value={status.label} severity={status.severity} />;
     };
 
-    const refundStatusBodyTemplate = (rowData: Order) => {
-        const statusMap: { [key: string]: { label: string; severity: any } } = {
-            none: { label: 'Không hoàn', severity: 'secondary' },
-            pending: { label: 'Chờ hoàn', severity: 'warning' },
-            completed: { label: 'Đã hoàn', severity: 'success' }
-        };
-        const status = statusMap[rowData.refund_status] || statusMap['none'];
-        return <Tag value={status.label} severity={status.severity} />;
-    };
 
     const paymentMethodBodyTemplate = (rowData: Order) => {
         const methods: { [key: string]: string } = {
             'cod': 'Tiền mặt',
-            'vnpay': 'VNPay',
             'momo': 'Momo',
             'banking': 'Chuyển khoản'
         };
@@ -366,15 +341,6 @@ const OrdersPage = () => {
                             onClick={() => updatePaymentStatus('completed')}
                         />
                     )}
-                    {order?.status === 'cancelled' && order?.payment_status === 'completed' && order?.refund_status === 'pending' && (
-                        <Button
-                            label="Xác nhận đã hoàn tiền"
-                            severity="success"
-                            icon="pi pi-check"
-                            size="small"
-                            onClick={() => updateRefundStatus('completed')}
-                        />
-                    )}
                 </div>
                 <Button label="Đóng" icon="pi pi-times" outlined onClick={hideDialog} />
             </div>
@@ -405,7 +371,6 @@ const OrdersPage = () => {
                         <Column field="payment_method" header="Thanh toán" body={paymentMethodBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
                         <Column field="status" header="Trạng thái" body={statusBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
                         <Column field="payment_status" header="Thanh toán" body={paymentStatusBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
-                        <Column field="refund_status" header="Hoàn tiền" body={refundStatusBodyTemplate} sortable style={{ minWidth: '10rem' }}></Column>
                         <Column field="created_at" header="Ngày đặt" body={(rowData: Order) => {
                             const date = new Date(rowData.created_at.split('.')[0]);
                             const dateStr = date.toLocaleDateString('vi-VN', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -462,10 +427,6 @@ const OrdersPage = () => {
                                         <div className="mb-3">
                                             <span className="text-600 block mb-1">Trạng thái thanh toán:</span>
                                             {paymentStatusBodyTemplate(order)}
-                                        </div>
-                                        <div className="mb-3">
-                                            <span className="text-600 block mb-1">Trạng thái hoàn tiền:</span>
-                                            {refundStatusBodyTemplate(order)}
                                         </div>
                                     </div>
 

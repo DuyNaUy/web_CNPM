@@ -14,16 +14,10 @@ class Order(models.Model):
 
     PAYMENT_METHOD_CHOICES = [
         ('cod', 'Thanh toán khi nhận hàng (COD)'),
-        ('vnpay', 'VNPay'),
         ('momo', 'Momo'),
         ('banking', 'Chuyển khoản ngân hàng'),
     ]
 
-    REFUND_STATUS_CHOICES = [
-        ('none', 'Không hoàn'),
-        ('pending', 'Chờ hoàn tiền'),
-        ('completed', 'Đã hoàn tiền'),
-    ]
 
     # Order info
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
@@ -42,7 +36,6 @@ class Order(models.Model):
     # Payment info
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES)
     payment_status = models.CharField(max_length=20, default='pending')  # pending, completed, failed
-    refund_status = models.CharField(max_length=20, choices=REFUND_STATUS_CHOICES, default='none')
     
     # MoMo payment info
     momo_transaction_id = models.CharField(max_length=100, blank=True, null=True)

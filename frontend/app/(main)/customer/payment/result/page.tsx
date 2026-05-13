@@ -41,7 +41,8 @@ const PaymentResultPage = () => {
                     
                     // Gọi API để verify trạng thái
                     try {
-                        const response = await orderAPI.checkMoMoStatus(orderId);
+                        const baseOrderId = orderId.split('-')[0];
+                        const response = await orderAPI.checkMoMoStatus(baseOrderId);
                         
                         if (response.order) {
                             setOrderCode(response.order.order_code);
