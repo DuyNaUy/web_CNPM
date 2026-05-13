@@ -604,6 +604,10 @@ export const orderAPI = {
 
     checkMoMoStatus: async (orderId: string) => {
         return await apiRequest(`/orders/momo-status/${orderId}/`);
+    },
+
+    checkPayOSStatus: async (orderId: string) => {
+        return await apiRequest(`/orders/payos-status/${orderId}/`);
     }
 };
 

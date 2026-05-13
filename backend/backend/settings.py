@@ -244,6 +244,14 @@ MOMO_ENDPOINT = 'https://test-payment.momo.vn/v2/gateway/api/create'
 MOMO_REDIRECT_URL = 'http://localhost:3000/customer/payment/result'
 MOMO_IPN_URL = 'http://localhost:8000/api/orders/momo-callback/'
 
+# PayOS Configuration
+PAYOS_CLIENT_ID = config('PAYOS_CLIENT_ID', default='')
+PAYOS_API_KEY = config('PAYOS_API_KEY', default='')
+PAYOS_CHECKSUM_KEY = config('PAYOS_CHECKSUM_KEY', default='')
+PAYOS_ENDPOINT = config('PAYOS_ENDPOINT', default='https://api-merchant.payos.vn')
+PAYOS_RETURN_URL = config('PAYOS_RETURN_URL', default='http://localhost:3000/customer/payment/result')
+PAYOS_CANCEL_URL = config('PAYOS_CANCEL_URL', default='http://localhost:3000/customer/checkout')
+
 # AI Configuration
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 GEMINI_MODEL = config('GEMINI_MODEL', default='gemini-3-flash-preview')

@@ -25,88 +25,114 @@ const PaymentResultPage = () => {
                 const orderId = searchParams.get('orderId');
                 const resultCode = searchParams.get('resultCode');
                 const message = searchParams.get('message');
+                const payosOrderCode =
+                    searchParams.get('orderCode') ||
+                    searchParams.get('ordercode') ||
+                    searchParams.get('order_code');
 
-                if (!orderId || !resultCode) {
-                    setPaymentStatus('failed');
-                    setMessage('Không tìm thấy thông tin thanh toán');
-                    setLoading(false);
-                    return;
-                }
-
-                // Kiểm tra kết quả từ MoMo
-                if (resultCode === '0') {
-                    // Thanh toán thành công
-                    setPaymentStatus('success');
-                    setMessage(message || 'Thanh toán thành công');
-                    
-                    // Gọi API để verify trạng thái
-                    try {
-                        const baseOrderId = orderId.split('-')[0];
-                        const response = await orderAPI.checkMoMoStatus(baseOrderId);
+                if (orderId && resultCode) {
+                    // Kiểm tra kết quả từ MoMo
+                    if (resultCode === '0') {
+                        // Thanh toán thành công
+                        setPaymentStatus('success');
+                        setMessage(message || 'Thanh toán thành công');
                         
-                        if (response.order) {
-                            setOrderCode(response.order.order_code);
-                        }
-                    } catch (error) {
-                        console.error('Error verifying payment:', error);
-                    }
-
-                    // Xóa items khỏi giỏ hàng nếu đơn hàng được tạo từ cart
-                    try {
-                        // Clear localStorage cart
-                        clearLocalCart();
-                        
-                        // Check localStorage for cartItemIds (MoMo cart items)
-                        const momoCartItemIds = localStorage.getItem('momoCartItemIds');
-                        if (momoCartItemIds) {
-                            const itemIds = JSON.parse(momoCartItemIds);
-                            // Xóa từng item khỏi cart API
-                            for (const itemId of itemIds) {
-                                try {
-                                    await cartAPI.removeItem(itemId);
-                                } catch (err) {
-                                    console.error('Error removing item from cart:', err);
-                                }
-                            }
-                            // Xóa dữ liệu đã lưu
-                            localStorage.removeItem('momoCartItemIds');
-                        }
-                        
-                        // Also check sessionStorage for backward compatibility
-                        const sessionMomoCartItemIds = sessionStorage.getItem('momoCartItemIds');
-                        if (sessionMomoCartItemIds) {
-                            const itemIds = JSON.parse(sessionMomoCartItemIds);
-                            // Xóa từng item khỏi cart API
-                            for (const itemId of itemIds) {
-                                try {
-                                    await cartAPI.removeItem(itemId);
-                                } catch (err) {
-                                    console.error('Error removing item from cart:', err);
-                                }
-                            }
-                            // Xóa dữ liệu đã lưu
-                            sessionStorage.removeItem('momoCartItemIds');
-                        }
-                        
-                        // Cập nhật số lượng giỏ hàng
+                        // Gọi API để verify trạng thái
                         try {
-                            const cartResponse = await cartAPI.getCart();
-                            if (cartResponse && cartResponse.items) {
-                                setCartCount(cartResponse.items.length);
-                            } else {
+                            const baseOrderId = orderId.split('-')[0];
+                            const response = await orderAPI.checkMoMoStatus(baseOrderId);
+                            
+                            if (response.order) {
+                                setOrderCode(response.order.order_code);
+                            }
+                        } catch (error) {
+                            console.error('Error verifying payment:', error);
+                        }
+
+                        // Xóa items khỏi giỏ hàng nếu đơn hàng được tạo từ cart
+                        try {
+                            // Clear localStorage cart
+                            clearLocalCart();
+                            
+                            // Check localStorage for cartItemIds (MoMo cart items)
+                            const momoCartItemIds = localStorage.getItem('momoCartItemIds');
+                            if (momoCartItemIds) {
+                                const itemIds = JSON.parse(momoCartItemIds);
+                                // Xóa từng item khỏi cart API
+                                for (const itemId of itemIds) {
+                                    try {
+                                        await cartAPI.removeItem(itemId);
+                                    } catch (err) {
+                                        console.error('Error removing item from cart:', err);
+                                    }
+                                }
+                                // Xóa dữ liệu đã lưu
+                                localStorage.removeItem('momoCartItemIds');
+                            }
+                            
+                            // Also check sessionStorage for backward compatibility
+                            const sessionMomoCartItemIds = sessionStorage.getItem('momoCartItemIds');
+                            if (sessionMomoCartItemIds) {
+                                const itemIds = JSON.parse(sessionMomoCartItemIds);
+                                // Xóa từng item khỏi cart API
+                                for (const itemId of itemIds) {
+                                    try {
+                                        await cartAPI.removeItem(itemId);
+                                    } catch (err) {
+                                        console.error('Error removing item from cart:', err);
+                                    }
+                                }
+                                // Xóa dữ liệu đã lưu
+                                sessionStorage.removeItem('momoCartItemIds');
+                            }
+                            
+                            // Cập nhật số lượng giỏ hàng
+                            try {
+                                const cartResponse = await cartAPI.getCart();
+                                if (cartResponse && cartResponse.items) {
+                                    setCartCount(cartResponse.items.length);
+                                } else {
+                                    setCartCount(0);
+                                }
+                            } catch (err) {
+                                console.error('Error updating cart count:', err);
                                 setCartCount(0);
                             }
-                        } catch (err) {
-                            console.error('Error updating cart count:', err);
-                            setCartCount(0);
+                        } catch (error) {
+                            console.error('Error clearing cart items:', error);
+                        }
+                    } else {
+                        // Thanh toán thất bại
+                        setPaymentStatus('failed');
+                        setMessage(message || 'Thanh toán thất bại');
+                    }
+                } else if (payosOrderCode) {
+                    try {
+                        const response = await orderAPI.checkPayOSStatus(payosOrderCode);
+                        if (response.order) {
+                            setOrderCode(response.order.order_code);
+                            if (response.order.payment_status === 'completed') {
+                                setPaymentStatus('success');
+                                setMessage('Thanh toán thành công');
+                            } else if (response.order.payment_status === 'failed') {
+                                setPaymentStatus('failed');
+                                setMessage('Thanh toán thất bại');
+                            } else {
+                                setPaymentStatus('pending');
+                                setMessage('Đang chờ xác nhận thanh toán');
+                            }
+                        } else {
+                            setPaymentStatus('pending');
+                            setMessage('Đang chờ xác nhận thanh toán');
                         }
                     } catch (error) {
-                        console.error('Error clearing cart items:', error);
+                        console.error('Error verifying PayOS payment:', error);
+                        setPaymentStatus('pending');
+                        setMessage('Đang chờ xác nhận thanh toán');
                     }
                 } else {
-                    // Thanh toán thất bại
                     setPaymentStatus('failed');
-                    setMessage(message || 'Thanh toán thất bại');
+                    setMessage('Không tìm thấy thông tin thanh toán');
                 }
             } catch (error) {
                 console.error('Error checking payment status:', error);
@@ -160,6 +186,36 @@ const PaymentResultPage = () => {
                                     icon="pi pi-shopping-bag"
                                     onClick={() => router.push('/customer/orders')}
                                     severity="success"
+                                />
+                                <Button
+                                    label="Tiếp tục mua sắm"
+                                    icon="pi pi-shopping-cart"
+                                    onClick={() => router.push('/customer/products')}
+                                    outlined
+                                />
+                            </div>
+                        </div>
+                    ) : paymentStatus === 'pending' ? (
+                        <div className="text-center py-6">
+                            <div className="mb-4">
+                                <i className="pi pi-clock text-blue-500" style={{ fontSize: '6rem' }}></i>
+                            </div>
+                            <h2 className="text-blue-600 mb-3">Đang chờ xác nhận</h2>
+                            <p className="text-xl mb-2">{message}</p>
+                            {orderCode && (
+                                <p className="text-lg text-600 mb-4">
+                                    Mã đơn hàng: <strong>{orderCode}</strong>
+                                </p>
+                            )}
+                            <p className="text-600 mb-4">
+                                Chúng tôi sẽ cập nhật trạng thái ngay khi nhận được xác nhận từ ngân hàng.
+                            </p>
+                            <div className="flex justify-content-center gap-3 mt-5">
+                                <Button
+                                    label="Xem đơn hàng"
+                                    icon="pi pi-shopping-bag"
+                                    onClick={() => router.push('/customer/orders')}
+                                    severity="info"
                                 />
                                 <Button
                                     label="Tiếp tục mua sắm"

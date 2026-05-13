@@ -12,7 +12,7 @@ from datetime import datetime, date, time, timedelta
 from .models import Order, OrderItem, Cart, CartItem
 from .serializers import OrderSerializer, OrderCreateSerializer, CartSerializer, CartItemDetailSerializer
 from products.models import Product, ProductVariant
-from .payment_utils import MoMoPayment
+from .payment_utils import MoMoPayment, PayOSPayment
 import logging
 import json
 
@@ -481,6 +481,54 @@ class OrderViewSet(viewsets.ViewSet):
                         return Response(
                             {
                                 'error': f'Lỗi kết nối MoMo: {str(e)}',
+                                'order': OrderSerializer(order).data
+                            },
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                        )
+
+                if order.payment_method == 'banking':
+                    try:
+                        items_payload = [
+                            {
+                                'name': item['product_name'],
+                                'quantity': item['quantity'],
+                                'price': int(item['product_price'])
+                            }
+                            for item in order_items
+                        ]
+                        buyer_info = {
+                            'buyerName': order.full_name,
+                            'buyerEmail': order.email,
+                            'buyerPhone': order.phone
+                        }
+                        payos_response = PayOSPayment.create_payment_link(
+                            order_code=order.id,
+                            amount=int(total_amount),
+                            description=order.order_code,
+                            buyer_info=buyer_info,
+                            items=items_payload
+                        )
+
+                        if payos_response.get('code') == '00' and payos_response.get('data'):
+                            payos_data = payos_response.get('data', {})
+                            response_data = OrderSerializer(order).data
+                            response_data['checkoutUrl'] = payos_data.get('checkoutUrl')
+                            response_data['qrCode'] = payos_data.get('qrCode')
+                            response_data['payosOrderCode'] = payos_data.get('orderCode')
+                            return Response(response_data, status=status.HTTP_201_CREATED)
+
+                        return Response(
+                            {
+                                'error': f"Lỗi tạo thanh toán PayOS: {payos_response.get('desc')}",
+                                'order': OrderSerializer(order).data
+                            },
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    except Exception as e:
+                        logger.error(f"Error creating PayOS payment: {str(e)}")
+                        return Response(
+                            {
+                                'error': f'Lỗi kết nối PayOS: {str(e)}',
                                 'order': OrderSerializer(order).data
                             },
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -1413,6 +1461,107 @@ def check_momo_payment_status(request, order_id):
         )
     except Exception as e:
         logger.error(f"Error checking MoMo payment status: {str(e)}")
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def payos_webhook(request):
+    """
+    Nhận webhook từ PayOS sau khi thanh toán
+    """
+    try:
+        payload = request.data
+        logger.info(f"PayOS webhook received: {payload}")
+
+        data = payload.get('data')
+        signature = payload.get('signature')
+
+        if not PayOSPayment.verify_webhook_signature(data, signature):
+            logger.error("Invalid PayOS signature")
+            return Response(
+                {'message': 'Invalid signature'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order_code = data.get('orderCode') if data else None
+        if not order_code:
+            return Response(
+                {'message': 'Missing orderCode'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            order = Order.objects.get(id=int(order_code))
+        except (Order.DoesNotExist, ValueError):
+            logger.error(f"Order not found: {order_code}")
+            return Response(
+                {'message': 'Order not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        success = payload.get('success') is True and data.get('code') == '00'
+
+        if success:
+            order.payment_status = 'completed'
+            logger.info(f"Order {order.order_code} payment completed via PayOS")
+        else:
+            order.payment_status = 'failed'
+            logger.warning(f"Order {order.order_code} payment failed via PayOS")
+
+        order.save(update_fields=['payment_status'])
+        return Response({'message': 'Success'}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error processing PayOS webhook: {str(e)}")
+        return Response(
+            {'message': 'Internal error'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_payos_payment_status(request, order_id):
+    """
+    Kiểm tra trạng thái thanh toán PayOS của đơn hàng
+    """
+    try:
+        order = Order.objects.get(id=order_id, user=request.user)
+
+        if order.payment_method != 'banking':
+            return Response(
+                {'error': 'Đơn hàng không sử dụng thanh toán PayOS'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        payos_response = PayOSPayment.get_payment_link_info(order.id)
+        if payos_response.get('code') == '00':
+            data = payos_response.get('data', {})
+            payos_status = data.get('status')
+            if payos_status == 'PAID':
+                order.payment_status = 'completed'
+                order.save(update_fields=['payment_status'])
+            elif payos_status == 'CANCELLED':
+                order.payment_status = 'failed'
+                order.save(update_fields=['payment_status'])
+
+        return Response({
+            'order': OrderSerializer(order).data,
+            'payos_status': payos_response
+        })
+
+    except Order.DoesNotExist:
+        return Response(
+            {'error': 'Đơn hàng không tồn tại'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error checking PayOS payment status: {str(e)}")
         return Response(
             {'error': str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

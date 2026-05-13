@@ -192,3 +192,141 @@ class MoMoPayment:
                 'resultCode': -1,
                 'message': f'Lỗi kiểm tra trạng thái: {str(e)}'
             }
+
+
+class PayOSPayment:
+    """
+    Xử lý thanh toán qua PayOS
+    Tài liệu: https://payos.vn/docs/api/
+    """
+
+    CLIENT_ID = getattr(settings, 'PAYOS_CLIENT_ID', '')
+    API_KEY = getattr(settings, 'PAYOS_API_KEY', '')
+    CHECKSUM_KEY = getattr(settings, 'PAYOS_CHECKSUM_KEY', '')
+    ENDPOINT = getattr(settings, 'PAYOS_ENDPOINT', 'https://api-merchant.payos.vn')
+    RETURN_URL = getattr(settings, 'PAYOS_RETURN_URL', 'http://localhost:3000/customer/payment/result')
+    CANCEL_URL = getattr(settings, 'PAYOS_CANCEL_URL', 'http://localhost:3000/customer/checkout')
+
+    @classmethod
+    def _headers(cls):
+        return {
+            'Content-Type': 'application/json',
+            'x-client-id': cls.CLIENT_ID,
+            'x-api-key': cls.API_KEY,
+        }
+
+    @classmethod
+    def _is_configured(cls):
+        return bool(cls.CLIENT_ID and cls.API_KEY and cls.CHECKSUM_KEY)
+
+    @classmethod
+    def create_signature(cls, amount, cancel_url, description, order_code, return_url):
+        data = (
+            f"amount={amount}"
+            f"&cancelUrl={cancel_url}"
+            f"&description={description}"
+            f"&orderCode={order_code}"
+            f"&returnUrl={return_url}"
+        )
+        return hmac.new(
+            cls.CHECKSUM_KEY.encode('utf-8'),
+            data.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+    @classmethod
+    def create_payment_link(cls, order_code, amount, description, buyer_info=None, items=None,
+                            return_url=None, cancel_url=None):
+        if not cls._is_configured():
+            return {
+                'code': '01',
+                'desc': 'PayOS is not configured'
+            }
+
+        return_url = return_url or cls.RETURN_URL
+        cancel_url = cancel_url or cls.CANCEL_URL
+
+        payload = {
+            'orderCode': int(order_code),
+            'amount': int(amount),
+            'description': description,
+            'cancelUrl': cancel_url,
+            'returnUrl': return_url,
+        }
+
+        if buyer_info:
+            payload.update({k: v for k, v in buyer_info.items() if v})
+
+        if items:
+            payload['items'] = items
+
+        payload['signature'] = cls.create_signature(
+            amount=int(amount),
+            cancel_url=cancel_url,
+            description=description,
+            order_code=int(order_code),
+            return_url=return_url
+        )
+
+        try:
+            response = requests.post(
+                f"{cls.ENDPOINT}/v2/payment-requests",
+                json=payload,
+                headers=cls._headers(),
+                timeout=30
+            )
+            return response.json()
+        except Exception as e:
+            return {
+                'code': '99',
+                'desc': f'Lỗi kết nối PayOS: {str(e)}'
+            }
+
+    @classmethod
+    def get_payment_link_info(cls, order_code):
+        if not cls._is_configured():
+            return {
+                'code': '01',
+                'desc': 'PayOS is not configured'
+            }
+
+        try:
+            response = requests.get(
+                f"{cls.ENDPOINT}/v2/payment-requests/{order_code}",
+                headers=cls._headers(),
+                timeout=30
+            )
+            return response.json()
+        except Exception as e:
+            return {
+                'code': '99',
+                'desc': f'Lỗi kết nối PayOS: {str(e)}'
+            }
+
+    @classmethod
+    def verify_webhook_signature(cls, data, signature):
+        if not cls.CHECKSUM_KEY or not data or not signature:
+            return False
+
+        raw_data = cls._build_signature_data(data)
+        expected = hmac.new(
+            cls.CHECKSUM_KEY.encode('utf-8'),
+            raw_data.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        return hmac.compare_digest(expected, signature)
+
+    @staticmethod
+    def _build_signature_data(data):
+        parts = []
+        for key in sorted(data.keys()):
+            value = data[key]
+            if value is None:
+                value = ''
+            elif isinstance(value, bool):
+                value = 'true' if value else 'false'
+            elif isinstance(value, (dict, list)):
+                value = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+            parts.append(f"{key}={value}")
+        return '&'.join(parts)

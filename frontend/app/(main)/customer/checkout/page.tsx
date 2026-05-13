@@ -257,6 +257,11 @@ const CheckoutPage = () => {
                         setCartCount(0);
                     }
 
+                    if (response.checkoutUrl) {
+                        window.location.href = response.checkoutUrl;
+                        return;
+                    }
+
                     toast.current?.show({
                         severity: 'info',
                         summary: 'Đơn đã được tạo',
@@ -395,7 +400,7 @@ const CheckoutPage = () => {
 
                     {paymentMethod === 'banking' && (
                         <div className="mt-3 text-600">
-                            Vui lòng nhấn "Đặt hàng" để hiển thị mã thanh toán.
+                            Vui lòng nhấn "Đặt hàng" để chuyển đến trang thanh toán.
                         </div>
                     )}
                 </div>
