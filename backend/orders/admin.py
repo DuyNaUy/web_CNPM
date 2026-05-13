@@ -29,8 +29,8 @@ class CartItemAdmin(admin.ModelAdmin):
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     inlines = [OrderItemInline]
-    list_display = ['order_code', 'full_name', 'status', 'payment_method', 'total_amount', 'created_at']
-    list_filter = ['status', 'payment_method', 'created_at']
+    list_display = ['order_code', 'full_name', 'status', 'payment_method', 'payment_status', 'refund_status', 'total_amount', 'created_at']
+    list_filter = ['status', 'payment_method', 'payment_status', 'refund_status', 'created_at']
     search_fields = ['order_code', 'full_name', 'phone', 'email']
     readonly_fields = ['order_code', 'created_at', 'updated_at']
     
@@ -42,7 +42,7 @@ class OrderAdmin(admin.ModelAdmin):
             'fields': ('full_name', 'phone', 'email', 'address', 'city', 'district', 'note')
         }),
         ('Thanh toán', {
-            'fields': ('payment_method', 'payment_status', 'subtotal', 'shipping_fee', 'total_amount')
+            'fields': ('payment_method', 'payment_status', 'refund_status', 'subtotal', 'shipping_fee', 'total_amount')
         }),
     )
 

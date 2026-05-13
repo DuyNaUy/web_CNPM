@@ -6,6 +6,7 @@ import { InputTextarea } from 'primereact/inputtextarea';
 import { RadioButton } from 'primereact/radiobutton';
 import { Toast } from 'primereact/toast';
 import { Divider } from 'primereact/divider';
+import { Dialog } from 'primereact/dialog';
 import React, { useRef, useState, useEffect, useContext } from 'react';
 import { useRouter } from 'next/navigation';
 import { orderAPI, getStoredUser, cartAPI } from '@/services/api';
@@ -42,9 +43,40 @@ const CheckoutPage = () => {
     });
 
     const [paymentMethod, setPaymentMethod] = useState<string>('cod');
+    const [showBankQr, setShowBankQr] = useState(false);
+
+    const bankInfo = {
+        bankCode: 'MB',
+        bankName: 'MBBank',
+        accountNumber: '06112004222',
+        accountName: 'Lương Trọng Duy',
+        branch: ''
+    };
+
+    const getVietQrUrl = () => {
+        const amount = calculateTotal();
+        const addInfo = `${formData.fullName || 'HoTen'}-${formData.phone || 'SDT'}`;
+        const accountName = bankInfo.accountName;
+        return `https://img.vietqr.io/image/${bankInfo.bankCode}-${bankInfo.accountNumber}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(accountName)}`;
+    };
+
 
     // Load cart items on mount
     useEffect(() => {
+        const user = getStoredUser();
+        if (!user) {
+            toast.current?.show({
+                severity: 'warn',
+                summary: 'Vui lòng đăng nhập',
+                detail: 'Bạn cần đăng nhập để thanh toán.',
+                life: 3000
+            });
+            setTimeout(() => {
+                router.push('/auth/login');
+            }, 800);
+            return;
+        }
+
         // First check for selectedCheckoutItems (from cart page)
         const selectedCheckoutItems = sessionStorage.getItem('selectedCheckoutItems');
         if (selectedCheckoutItems) {
@@ -212,6 +244,30 @@ const CheckoutPage = () => {
                     return;
                 }
                 
+                if (paymentMethod === 'banking') {
+                    clearLocalCart();
+                    if (selectedItemIds.length > 0) {
+                        for (const itemId of selectedItemIds) {
+                            try {
+                                await cartAPI.removeItem(itemId);
+                            } catch (err) {
+                                console.error('Error removing item from cart:', err);
+                            }
+                        }
+                        setCartCount(0);
+                    }
+
+                    toast.current?.show({
+                        severity: 'info',
+                        summary: 'Đơn đã được tạo',
+                        detail: 'Vui lòng thanh toán và chờ cửa hàng xác nhận.',
+                        life: 4000
+                    });
+
+                    setShowBankQr(true);
+                    return;
+                }
+
                 // Delete items from cart if they came from cart page (for COD payment)
                 clearLocalCart();
                 if (selectedItemIds.length > 0) {
@@ -255,6 +311,7 @@ const CheckoutPage = () => {
     };
 
     return (
+        <>
         <div className="grid">
             <Toast ref={toast} />
 
@@ -342,6 +399,12 @@ const CheckoutPage = () => {
                             </label>
                         </div>
                     </div>
+
+                    {paymentMethod === 'banking' && (
+                        <div className="mt-3 text-600">
+                            Vui lòng nhấn "Đặt hàng" để hiển thị mã thanh toán.
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -383,6 +446,49 @@ const CheckoutPage = () => {
                 </>
             )}
         </div>
+        <Dialog
+            header="Quét mã thanh toán"
+            visible={showBankQr}
+            onHide={() => setShowBankQr(false)}
+            style={{ width: '95%', maxWidth: '460px' }}
+        >
+            <div className="flex flex-column align-items-center">
+                <img
+                    src={getVietQrUrl()}
+                    alt="QR chuyển khoản"
+                    className="border-round border-1 surface-border"
+                    style={{ maxWidth: '260px', width: '100%', height: 'auto' }}
+                />
+                <div className="text-600 mt-3 text-center">
+                    Vui lòng quét mã để thanh toán.
+                    <br />
+                    Nội dung chuyển khoản: <strong>{formData.fullName || 'HoTen'} - {formData.phone || 'SDT'}</strong>
+                </div>
+                <div className="text-600 mt-2 text-center">
+                    Sau khi chuyển khoản thành công, cửa hàng sẽ xác nhận và cập nhật trạng thái đơn.
+                </div>
+                <div className="flex gap-2 mt-4">
+                    <Button label="Đóng" outlined onClick={() => setShowBankQr(false)} />
+                    <Button
+                        label="Đã thanh toán"
+                        icon="pi pi-check"
+                        onClick={() => {
+                            setShowBankQr(false);
+                            toast.current?.show({
+                                severity: 'info',
+                                summary: 'Đợi xác nhận',
+                                detail: 'Chúng tôi sẽ xác nhận khi nhận được chuyển khoản.',
+                                life: 4000
+                            });
+                            setTimeout(() => {
+                                router.push('/customer/orders');
+                            }, 800);
+                        }}
+                    />
+                </div>
+            </div>
+        </Dialog>
+        </>
     );
 };
 

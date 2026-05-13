@@ -527,6 +527,20 @@ export const orderAPI = {
         });
     },
 
+    updatePaymentStatus: async (order_id: number, payment_status: string) => {
+        return await apiRequest('/orders/update_payment_status/', {
+            method: 'POST',
+            body: JSON.stringify({ order_id, payment_status })
+        });
+    },
+
+    updateRefundStatus: async (order_id: number, refund_status: string) => {
+        return await apiRequest('/orders/update_refund_status/', {
+            method: 'POST',
+            body: JSON.stringify({ order_id, refund_status })
+        });
+    },
+
     cancelOrder: async (order_id: number) => {
         return await apiRequest('/orders/cancel_order/', {
             method: 'POST',
