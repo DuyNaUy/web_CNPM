@@ -105,14 +105,11 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}) => {
         if (response.status === 401 && token && (!config.method || config.method === 'GET')) {
             console.warn('[API] Got 401 with token for GET request, retrying without token...');
             // Remove authorization header and retry
-            const configWithoutAuth = {
+            const { Authorization: _auth, ...headersWithoutAuth } = headers;
+            const configWithoutAuth: RequestInit = {
                 ...config,
-                headers: {
-                    ...headers,
-                    Authorization: undefined
-                }
+                headers: headersWithoutAuth
             };
-            delete configWithoutAuth.headers['Authorization'];
             
             response = await fetchWithApiBaseFallback(endpoint, configWithoutAuth);
             try {

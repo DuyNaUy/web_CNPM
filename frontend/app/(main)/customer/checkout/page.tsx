@@ -400,7 +400,7 @@ const CheckoutPage = () => {
 
                     {paymentMethod === 'banking' && (
                         <div className="mt-3 text-600">
-                            Vui lòng nhấn "Đặt hàng" để chuyển đến trang thanh toán.
+                            Vui lòng nhấn &quot;Đặt hàng&quot; để chuyển đến trang thanh toán.
                         </div>
                     )}
                 </div>

@@ -257,7 +257,7 @@ export default function AIAgentConsole({ userId }: AIAgentConsoleProps) {
           <h2>AI Tư vấn bán hàng</h2>
           <p>Chào mừng bạn! Tôi là trợ lý AI của TeddyShop.</p>
           <p>Tôi sẽ giúp bạn tìm sản phẩm phù hợp và tạo đơn hàng.</p>
-          <button onClick={handleStartConversation} className={styles.startBtn}>
+          <button onClick={() => handleStartConversation()} className={styles.startBtn}>
             Bắt đầu tư vấn
           </button>
         </div>
