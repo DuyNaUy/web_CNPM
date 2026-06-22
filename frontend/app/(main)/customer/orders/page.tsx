@@ -26,6 +26,7 @@ interface Order {
     created_at: string;
     updated_at?: string;
     status: 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled' | 'returned';
+    payment_status?: 'pending' | 'completed' | 'failed';
     total_amount: number;
     items: OrderItem[];
     address: string;
@@ -45,6 +46,8 @@ const OrdersPage = () => {
 
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [detailDialog, setDetailDialog] = useState(false);
+    const [refundDialogVisible, setRefundDialogVisible] = useState(false);
+    const [refundOrder, setRefundOrder] = useState<Order | null>(null);
     const toast = useRef<Toast>(null);
 
     // Load orders on mount
@@ -121,10 +124,21 @@ const OrdersPage = () => {
 
     const actionBodyTemplate = (rowData: Order) => {
         const isReturnAllowed = canReturnOrder(rowData);
+        const canRequestRefundSupport = rowData.status === 'cancelled' && rowData.payment_status === 'completed' && rowData.payment_method !== 'cod';
         return (
             <div className="flex gap-2">
                 <Button icon="pi pi-eye" rounded outlined onClick={() => viewOrderDetail(rowData)} tooltip="Xem chi tiết" />
                 {(rowData.status === 'pending' || rowData.status === 'confirmed') && <Button icon="pi pi-times" rounded outlined severity="danger" onClick={() => cancelOrder(rowData)} tooltip="Hủy đơn" />}
+                {canRequestRefundSupport && (
+                    <Button
+                        icon="pi pi-comments"
+                        rounded
+                        outlined
+                        severity="help"
+                        onClick={() => openRefundSupportChat(rowData)}
+                        tooltip="Nhắn admin hoàn tiền"
+                    />
+                )}
                 {rowData.status === 'delivered' && isReturnAllowed && (
                     <Button
                         icon="pi pi-replay"
@@ -159,6 +173,11 @@ const OrdersPage = () => {
                         detail: 'Đơn hàng đã được hủy thành công',
                         life: 3000
                     });
+
+                    if (order.payment_status === 'completed' && order.payment_method !== 'cod') {
+                        setRefundOrder(order);
+                        setRefundDialogVisible(true);
+                    }
                 } catch (error: any) {
                     console.error('Error cancelling order:', error);
                     toast.current?.show({
@@ -172,6 +191,47 @@ const OrdersPage = () => {
             acceptLabel: 'Có',
             rejectLabel: 'Không'
         });
+    };
+
+    const openRefundSupportChat = (order: Order) => {
+        const firstItem = order.items?.[0];
+        const totalQuantity = order.items?.reduce((sum, item) => sum + item.quantity, 0) || 1;
+        const itemNames = order.items?.map((item) => item.product_name).join(', ') || 'sản phẩm trong đơn hàng';
+        const firstItemPrice = Number(firstItem?.product_price || 0);
+        const fallbackImage = (firstItem as any)?.product_image || (firstItem as any)?.image || null;
+
+        sessionStorage.setItem('ai_product_context', JSON.stringify({
+            source: 'order-refund',
+            product_id: order.id,
+            product_name: firstItem?.product_name || `Đơn hàng ${order.order_code}`,
+            category: 'hoàn tiền',
+            description: `Yêu cầu hỗ trợ hoàn tiền cho đơn ${order.order_code}. Sản phẩm: ${itemNames}. Phương thức thanh toán: ${order.payment_method}.`,
+            detail_description: `Mã đơn: ${order.order_code} | Trạng thái thanh toán: ${order.payment_status || 'không rõ'} | Ngày đặt: ${new Date(order.created_at).toLocaleString('vi-VN')} | Người nhận: ${order.full_name} | SĐT: ${order.phone} | Địa chỉ: ${order.address}`,
+            selected_size: firstItem?.unit || 'không áp dụng',
+            quantity: totalQuantity,
+            price: firstItemPrice > 0 ? firstItemPrice : order.total_amount,
+            min_price: firstItemPrice > 0 ? firstItemPrice : order.total_amount,
+            max_price: firstItemPrice > 0 ? firstItemPrice : order.total_amount,
+            image: fallbackImage,
+            timestamp: new Date().toISOString(),
+            order_id: order.id,
+            order_code: order.order_code,
+            order_created_at: order.created_at,
+            payment_method: order.payment_method,
+            payment_status: order.payment_status,
+            auto_send: true
+        }));
+
+        toast.current?.show({
+            severity: 'info',
+            summary: 'Đang chuyển tư vấn',
+            detail: 'Bạn sẽ được chuyển đến chatbot để gửi thông tin hoàn tiền cho admin',
+            life: 2500
+        });
+
+        setTimeout(() => {
+            router.push('/customer/ai-agent');
+        }, 300);
     };
 
     const returnOrder = (order: Order) => {
@@ -244,6 +304,33 @@ const OrdersPage = () => {
         <div className="grid">
             <Toast ref={toast} />
             <ConfirmDialog />
+
+            <Dialog
+                visible={refundDialogVisible}
+                style={{ width: '32rem' }}
+                header="Yêu cầu hoàn tiền"
+                modal
+                onHide={() => setRefundDialogVisible(false)}
+            >
+                <div className="flex flex-column gap-3">
+                    <p className="m-0">
+                        Đơn hàng {refundOrder?.order_code} đã được hủy. Nếu bạn đã thanh toán bằng chuyển khoản hoặc MoMo, vui lòng nhắn admin để gửi thông tin hoàn tiền.
+                    </p>
+                    <div className="flex justify-content-end gap-2">
+                        <Button label="Đóng" severity="secondary" outlined onClick={() => setRefundDialogVisible(false)} />
+                        <Button
+                            label="Nhắn admin"
+                            icon="pi pi-comments"
+                            onClick={() => {
+                                setRefundDialogVisible(false);
+                                if (refundOrder) {
+                                    openRefundSupportChat(refundOrder);
+                                }
+                            }}
+                        />
+                    </div>
+                </div>
+            </Dialog>
 
             {/* Header Section */}
             <div className="col-12">

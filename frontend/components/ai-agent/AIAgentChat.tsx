@@ -105,6 +105,8 @@ interface AIProductContext {
   order_id?: number;
   order_code?: string;
   order_created_at?: string;
+  payment_method?: string;
+  payment_status?: string;
   auto_send?: boolean;
 }
 
@@ -1236,6 +1238,23 @@ export default function AIAgentChat({
       return `Tôi cần hỗ trợ HOÀN HÀNG cho đơn ${orderCode}. Ngày đặt: ${orderDateText}. Sản phẩm chính: ${productName}, số lượng: ${quantity}, tổng tiền: ${totalText}. Thông tin đơn: ${orderDetail}. Vui lòng chuyển cuộc trò chuyện này cho admin/nhân viên hỗ trợ để xử lý hoàn hàng.`;
     }
 
+    if (ctx.source === 'order-refund') {
+      const orderCode = ctx.order_code || `#${ctx.order_id || ''}`;
+      const productName = ctx.product_name || 'đơn hàng';
+      const quantity = ctx.quantity || 1;
+      const totalText = typeof ctx.price === 'number'
+        ? `${ctx.price.toLocaleString('vi-VN')} VND`
+        : 'không rõ tổng tiền';
+      const orderDateText = ctx.order_created_at
+        ? new Date(ctx.order_created_at).toLocaleString('vi-VN')
+        : 'không rõ ngày đặt';
+      const orderDetail = ctx.detail_description || '';
+      const paymentMethod = ctx.payment_method || 'không rõ phương thức thanh toán';
+      const paymentStatus = ctx.payment_status || 'không rõ trạng thái thanh toán';
+
+      return `Tôi cần hỗ trợ HOÀN TIỀN cho đơn ${orderCode}. Ngày đặt: ${orderDateText}. Sản phẩm chính: ${productName}, số lượng: ${quantity}, tổng tiền: ${totalText}. Phương thức thanh toán: ${paymentMethod}. Trạng thái thanh toán: ${paymentStatus}. Thông tin đơn: ${orderDetail}. Vui lòng chuyển cuộc trò chuyện này cho admin/nhân viên hỗ trợ để xử lý hoàn tiền.`;
+    }
+
     const name = ctx.product_name || 'sản phẩm này';
     const category = ctx.category || 'không rõ danh mục';
     const size = ctx.selected_size || 'chưa chọn';
@@ -1488,9 +1507,10 @@ export default function AIAgentChat({
 
     const cardPayload = buildProductCardPayload(pendingProductContext);
     const shouldShowContextText = pendingProductContext.source === 'order-return';
+    const shouldShowRefundText = pendingProductContext.source === 'order-refund';
     const userCardMessage: Message = {
       role: 'user',
-      content: shouldShowContextText ? prompt : '',
+      content: shouldShowContextText || shouldShowRefundText ? prompt : '',
       timestamp: new Date().toISOString(),
       products: [cardPayload],
     };
@@ -1503,7 +1523,7 @@ export default function AIAgentChat({
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-      if (pendingProductContext.source === 'order-return') {
+      if (pendingProductContext.source === 'order-return' || pendingProductContext.source === 'order-refund') {
         const supportResponse = await fetchAiEndpoint(
           `${apiUrl}/api/ai/conversations/${conversationId}/request_human_support/`,
           {
@@ -1594,7 +1614,7 @@ export default function AIAgentChat({
   useEffect(() => {
     if (!pendingProductContext || isLoading) return;
 
-    if (pendingProductContext.auto_send || pendingProductContext.source === 'order-return') {
+    if (pendingProductContext.auto_send || pendingProductContext.source === 'order-return' || pendingProductContext.source === 'order-refund') {
       void sendPendingProductContext();
     }
   }, [pendingProductContext, isLoading]);
@@ -1993,7 +2013,7 @@ export default function AIAgentChat({
 
       {/* Input Area */}
       <div className={styles.inputContainer}>
-        {pendingProductContext && !pendingProductContext.auto_send && pendingProductContext.source !== 'order-return' && (
+        {pendingProductContext && !pendingProductContext.auto_send && pendingProductContext.source !== 'order-return' && pendingProductContext.source !== 'order-refund' && (
           <div className={styles.pendingProductBar}>
             <div className={styles.pendingProductLeft}>
               <img
