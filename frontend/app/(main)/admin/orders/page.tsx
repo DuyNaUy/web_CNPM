@@ -36,6 +36,8 @@ interface Order {
     district: string;
     note: string;
     payment_status: string;
+    refund_status?: string;
+    refund_note?: string;
     subtotal: number;
     shipping_fee: number;
     items: OrderItem[];
@@ -57,6 +59,12 @@ const OrdersPage = () => {
         { label: 'Đang giao', value: 'shipping' },
         { label: 'Đã giao', value: 'delivered' },
         { label: 'Đã hủy', value: 'cancelled' }
+    ];
+
+    const refundStatuses = [
+        { label: 'Yêu cầu hoàn tiền', value: 'requested' },
+        { label: 'Chờ duyệt', value: 'pending_approval' },
+        { label: 'Đã hoàn', value: 'refunded' }
     ];
 
     useEffect(() => {
@@ -237,6 +245,48 @@ const OrdersPage = () => {
         }
     };
 
+    const updateRefundStatus = async (newStatus: string) => {
+        if (!order) {
+            return;
+        }
+
+        try {
+            const response = await orderAPI.updateRefundStatus(order.id, newStatus);
+            if (response && response.id) {
+                const _orders = [...orders];
+                const index = _orders.findIndex((o) => o.id === order.id);
+                if (index >= 0) {
+                    _orders[index].refund_status = newStatus;
+                    setOrders(_orders);
+                }
+                setOrder({ ...order, refund_status: newStatus });
+                toast.current?.show({
+                    severity: 'success',
+                    summary: 'Thành công',
+                    detail: 'Cập nhật trạng thái hoàn tiền thành công',
+                    life: 3000
+                });
+            }
+        } catch (error: any) {
+            toast.current?.show({
+                severity: 'error',
+                summary: 'Lỗi',
+                detail: error.message || 'Không thể cập nhật trạng thái hoàn tiền',
+                life: 3000
+            });
+        }
+    };
+
+    const isRefundWorkflowOrder = (targetOrder?: Order | null) => {
+        if (!targetOrder) {
+            return false;
+        }
+
+        return targetOrder.status === 'cancelled'
+            && targetOrder.payment_status === 'completed'
+            && ['momo', 'banking'].includes(targetOrder.payment_method);
+    };
+
 
     const leftToolbarTemplate = () => {
         return (
@@ -322,7 +372,7 @@ const OrdersPage = () => {
         <React.Fragment>
             <div className="flex flex-wrap gap-2 justify-content-between align-items-center w-full">
                 <div className="flex flex-wrap gap-2">
-                    {order && statuses.map((status) => (
+                    {order && !isRefundWorkflowOrder(order) && statuses.map((status) => (
                         <Button 
                             key={status.value} 
                             label={status.label} 
@@ -332,7 +382,17 @@ const OrdersPage = () => {
                             size="small"
                         />
                     ))}
-                    {order?.payment_method === 'banking' && order?.payment_status === 'pending' && (
+                    {order && isRefundWorkflowOrder(order) && refundStatuses.map((status) => (
+                        <Button
+                            key={status.value}
+                            label={status.label}
+                            severity={order.refund_status === status.value ? 'success' : 'secondary'}
+                            onClick={() => updateRefundStatus(status.value)}
+                            icon={order.refund_status === status.value ? 'pi pi-check' : ''}
+                            size="small"
+                        />
+                    ))}
+                    {['momo', 'banking'].includes(order?.payment_method || '') && order?.payment_status === 'pending' && (
                         <Button
                             label="Xác nhận đã thanh toán"
                             severity="success"
@@ -428,6 +488,29 @@ const OrdersPage = () => {
                                             <span className="text-600 block mb-1">Trạng thái thanh toán:</span>
                                             {paymentStatusBodyTemplate(order)}
                                         </div>
+                                        {isRefundWorkflowOrder(order) && (
+                                            <div className="mb-3">
+                                                <span className="text-600 block mb-1">Trạng thái hoàn tiền:</span>
+                                                <Tag
+                                                    value={(() => {
+                                                        const refundMap: { [key: string]: { label: string; severity: any } } = {
+                                                            requested: { label: 'Yêu cầu hoàn tiền', severity: 'warning' },
+                                                            pending_approval: { label: 'Chờ duyệt', severity: 'info' },
+                                                            refunded: { label: 'Đã hoàn', severity: 'success' }
+                                                        };
+                                                        return refundMap[order.refund_status || 'requested']?.label || 'Yêu cầu hoàn tiền';
+                                                    })()}
+                                                    severity={(() => {
+                                                        const refundMap: { [key: string]: { label: string; severity: any } } = {
+                                                            requested: { label: 'Yêu cầu hoàn tiền', severity: 'warning' },
+                                                            pending_approval: { label: 'Chờ duyệt', severity: 'info' },
+                                                            refunded: { label: 'Đã hoàn', severity: 'success' }
+                                                        };
+                                                        return refundMap[order.refund_status || 'requested']?.severity || 'secondary';
+                                                    })()}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Thông tin khách hàng */}
@@ -502,6 +585,13 @@ const OrdersPage = () => {
                                         <div className="surface-100 p-4 border-round">
                                             <h6 className="mt-0 mb-2 text-primary">Ghi Chú</h6>
                                             <p className="text-600 m-0">{order.note}</p>
+                                        </div>
+                                    )}
+
+                                    {order.refund_note && (
+                                        <div className="surface-100 p-4 border-round mt-3">
+                                            <h6 className="mt-0 mb-2 text-primary">Nội dung khách gửi hoàn tiền</h6>
+                                            <p className="text-600 m-0 whitespace-pre-line">{order.refund_note}</p>
                                         </div>
                                     )}
                                 </div>

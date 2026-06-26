@@ -27,6 +27,8 @@ interface Order {
     updated_at?: string;
     status: 'pending' | 'confirmed' | 'shipping' | 'delivered' | 'cancelled' | 'returned';
     payment_status?: 'pending' | 'completed' | 'failed';
+    refund_status?: 'none' | 'requested' | 'pending_approval' | 'refunded';
+    refund_note?: string;
     total_amount: number;
     items: OrderItem[];
     address: string;
@@ -50,13 +52,32 @@ const OrdersPage = () => {
     const [refundOrder, setRefundOrder] = useState<Order | null>(null);
     const toast = useRef<Toast>(null);
 
-    // Load orders on mount
+    // Load orders on mount and keep them fresh so admin changes appear quickly.
     useEffect(() => {
         loadOrders();
+
+        const refreshId = window.setInterval(() => {
+            loadOrders(true);
+        }, 8000);
+
+        return () => window.clearInterval(refreshId);
     }, []);
 
-    const loadOrders = async () => {
-        setLoading(true);
+    useEffect(() => {
+        if (!selectedOrder) {
+            return;
+        }
+
+        const refreshedOrder = orders.find((order) => order.id === selectedOrder.id);
+        if (refreshedOrder) {
+            setSelectedOrder(refreshedOrder);
+        }
+    }, [orders, selectedOrder]);
+
+    const loadOrders = async (silent = false) => {
+        if (!silent) {
+            setLoading(true);
+        }
         try {
             const response = await orderAPI.getMyOrders();
             console.log('Orders response:', response);
@@ -74,14 +95,18 @@ const OrdersPage = () => {
             }
         } catch (error) {
             console.error('Error loading orders:', error);
-            toast.current?.show({
-                severity: 'error',
-                summary: 'Lỗi',
-                detail: 'Không thể tải đơn hàng',
-                life: 3000
-            });
+            if (!silent) {
+                toast.current?.show({
+                    severity: 'error',
+                    summary: 'Lỗi',
+                    detail: 'Không thể tải đơn hàng',
+                    life: 3000
+                });
+            }
         } finally {
-            setLoading(false);
+            if (!silent) {
+                setLoading(false);
+            }
         }
     };
 
@@ -97,6 +122,26 @@ const OrdersPage = () => {
     const statusBodyTemplate = (rowData: Order) => {
         const status = statusMap[rowData.status];
         return <Tag value={status.label} severity={status.severity} />;
+    };
+
+    const refundStatusMap: { [key: string]: { label: string; severity: any } } = {
+        none: { label: 'Không hoàn tiền', severity: 'secondary' },
+        requested: { label: 'Yêu cầu hoàn tiền', severity: 'warning' },
+        pending_approval: { label: 'Chờ duyệt', severity: 'info' },
+        refunded: { label: 'Đã hoàn', severity: 'success' }
+    };
+
+    const canShowRefundStatus = (order: Order) => {
+        return order.status === 'cancelled' && order.payment_status === 'completed' && order.payment_method !== 'cod';
+    };
+
+    const refundStatusBodyTemplate = (rowData: Order) => {
+        if (!canShowRefundStatus(rowData)) {
+            return <Tag value="Không áp dụng" severity="secondary" />;
+        }
+
+        const refundStatus = refundStatusMap[rowData.refund_status || 'requested'] || refundStatusMap.requested;
+        return <Tag value={refundStatus.label} severity={refundStatus.severity} />;
     };
 
     const totalBodyTemplate = (rowData: Order) => {
@@ -165,7 +210,12 @@ const OrdersPage = () => {
             icon: 'pi pi-exclamation-triangle',
             accept: async () => {
                 try {
-                    await orderAPI.cancelOrder(order.id);
+                    let refundNote = '';
+                    if (order.payment_status === 'completed' && order.payment_method !== 'cod') {
+                        refundNote = window.prompt('Nhập nội dung cần gửi cho admin về yêu cầu hoàn tiền (không bắt buộc):', '') || '';
+                    }
+
+                    await orderAPI.cancelOrder(order.id, refundNote);
                     await loadOrders();
                     toast.current?.show({
                         severity: 'success',
@@ -392,6 +442,12 @@ const OrdersPage = () => {
                             )}
                         />
                         <Column 
+                            field="refund_status" 
+                            header="Hoàn tiền" 
+                            body={refundStatusBodyTemplate}
+                            sortable 
+                        />
+                        <Column 
                             header="Tổng tiền" 
                             body={(rowData) => (
                                 <span className="font-bold text-pink-600">{totalBodyTemplate(rowData)}</span>
@@ -455,6 +511,19 @@ const OrdersPage = () => {
                                     </div>
                                     <span className="ml-4 text-900">{selectedOrder.payment_method}</span>
                                 </div>
+                                {canShowRefundStatus(selectedOrder) && (
+                                    <div className="mb-3">
+                                        <div className="flex align-items-center mb-2">
+                                            <i className="pi pi-refresh text-500 mr-2"></i>
+                                            <span className="text-600">Trạng thái hoàn tiền:</span>
+                                        </div>
+                                        <Tag
+                                            value={refundStatusMap[selectedOrder.refund_status || 'requested']?.label || 'Yêu cầu hoàn tiền'}
+                                            severity={refundStatusMap[selectedOrder.refund_status || 'requested']?.severity || 'warning'}
+                                            className="ml-4"
+                                        />
+                                    </div>
+                                )}
                                 <div className="mb-3">
                                     <div className="flex align-items-center">
                                         <i className="pi pi-map-marker text-500 mr-2"></i>
@@ -559,6 +628,16 @@ const OrdersPage = () => {
                                             <i className="pi pi-check-circle text-green-600 mr-2 mt-1"></i>
                                             <span className="text-green-700 text-sm">
                                                 Đơn hàng đã được giao thành công! Cảm ơn bạn đã mua hàng.
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                                {canShowRefundStatus(selectedOrder) && selectedOrder.refund_note && (
+                                    <div className="bg-blue-50 p-3 border-round-lg border-1 border-blue-300 mt-3">
+                                        <div className="flex align-items-start">
+                                            <i className="pi pi-comment text-blue-600 mr-2 mt-1"></i>
+                                            <span className="text-blue-700 text-sm whitespace-pre-line">
+                                                {selectedOrder.refund_note}
                                             </span>
                                         </div>
                                     </div>

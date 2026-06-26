@@ -254,6 +254,7 @@ class OrderViewSet(viewsets.ViewSet):
         """Khách hàng hủy đơn hàng của mình"""
         try:
             order_id = request.data.get('order_id')
+            refund_note = (request.data.get('refund_note') or '').strip()
             
             if not order_id:
                 return Response(
@@ -284,6 +285,14 @@ class OrderViewSet(viewsets.ViewSet):
             
             old_status = order.status
             order.status = 'cancelled'
+            if order.payment_method in ['momo', 'banking'] and order.payment_status == 'completed':
+                order.refund_status = 'requested'
+                if refund_note:
+                    order.refund_note = refund_note
+            else:
+                order.refund_status = 'none'
+                if refund_note:
+                    order.refund_note = refund_note
             order.save()
             
             # Hoàn trả tồn kho khi hủy đơn
@@ -707,6 +716,51 @@ class OrderViewSet(viewsets.ViewSet):
             )
         except Exception as e:
             logger.error(f"Error updating payment status: {str(e)}")
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'])
+    def update_refund_status(self, request):
+        """Admin - Cập nhật trạng thái hoàn tiền"""
+        if not (request.user.is_staff or getattr(request.user, 'role', None) == 'admin'):
+            return Response(
+                {'error': 'Bạn không có quyền truy cập'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            order_id = request.data.get('order_id')
+            new_status = request.data.get('refund_status')
+
+            if not order_id or not new_status:
+                return Response(
+                    {'error': 'order_id và refund_status là bắt buộc'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            valid_statuses = ['requested', 'pending_approval', 'refunded']
+            if new_status not in valid_statuses:
+                return Response(
+                    {'error': f'Trạng thái không hợp lệ. Chọn từ: {", ".join(valid_statuses)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            order = Order.objects.get(id=order_id)
+            order.refund_status = new_status
+            order.save(update_fields=['refund_status'])
+
+            serializer = OrderSerializer(order)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Order.DoesNotExist:
+            return Response(
+                {'error': 'Đơn hàng không tồn tại'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Error updating refund status: {str(e)}")
             return Response(
                 {'error': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
