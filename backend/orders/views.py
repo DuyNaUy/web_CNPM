@@ -1218,12 +1218,14 @@ class OrderViewSet(viewsets.ViewSet):
         report_type = request.GET.get('report_type', 'revenue')
         start_date = request.GET.get('start_date', '')
         end_date = request.GET.get('end_date', '')
+        category_id_str = request.GET.get('category_id', '')
         
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=landscape(A4))
         elements = []
         styles = getSampleStyleSheet()
 
+        # Parse category_id
         category_id = None
         if category_id_str:
             try:
@@ -1234,28 +1236,31 @@ class OrderViewSet(viewsets.ViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
+        # Get category name for display
         category_name = 'Tat ca'
         if category_id:
             from categories.models import Category
             category_name = Category.objects.filter(id=category_id).values_list('name', flat=True).first() or 'Khong xac dinh'
         
-        # Filter orders by date range
-        orders_query = Order.objects.all()
-        if start_date:
-            orders_query = orders_query.filter(created_at__gte=start_date)
-        if end_date:
-            orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
-        if category_id:
-            orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
-        
         if report_type == 'revenue':
+            # Báo cáo doanh thu - có thể lọc theo danh mục
             title = Paragraph('<para align=center><b>BAO CAO DOANH THU - WEB_TEDDY</b></para>', styles['Title'])
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
-            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
-            elements.append(category_line)
+            if category_id:
+                category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
+                elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
+            
+            # Filter orders by date range and category
+            orders_query = Order.objects.all()
+            if start_date:
+                orders_query = orders_query.filter(created_at__gte=start_date)
+            if end_date:
+                orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
+            if category_id:
+                orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
             
             orders = orders_query.order_by('-created_at')[:100]
             data = [['Ma DH', 'Khach hang', 'Ngay', 'Tong tien', 'Trang thai', 'Thanh toan']]
@@ -1288,13 +1293,24 @@ class OrderViewSet(viewsets.ViewSet):
             ]))
         
         elif report_type == 'orders':
+            # Báo cáo đơn hàng - có thể lọc theo danh mục
             title = Paragraph('<para align=center><b>BAO CAO DON HANG - WEB_TEDDY</b></para>', styles['Title'])
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
-            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
-            elements.append(category_line)
+            if category_id:
+                category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
+                elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
+            
+            # Filter orders by date range and category
+            orders_query = Order.objects.all()
+            if start_date:
+                orders_query = orders_query.filter(created_at__gte=start_date)
+            if end_date:
+                orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
+            if category_id:
+                orders_query = orders_query.filter(items__product__category_id=category_id).distinct()
             
             orders = orders_query.order_by('-created_at')[:100]
             data = [['Ma DH', 'Khach', 'SDT', 'Tong tien', 'TT', 'Ngay']]
@@ -1321,15 +1337,28 @@ class OrderViewSet(viewsets.ViewSet):
             ]))
         
         elif report_type == 'products':
+            # Báo cáo sản phẩm bán chạy - có thể lọc theo danh mục
             title = Paragraph('<para align=center><b>BAO CAO SAN PHAM BAN CHAY - WEB_TEDDY</b></para>', styles['Title'])
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
-            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
-            elements.append(category_line)
+            if category_id:
+                category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
+                elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
             
+            # Filter orders by date range
+            orders_query = Order.objects.all()
+            if start_date:
+                orders_query = orders_query.filter(created_at__gte=start_date)
+            if end_date:
+                orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
+            
+            # Get order items and filter by category if needed
             order_items_query = OrderItem.objects.filter(order__in=orders_query)
+            if category_id:
+                order_items_query = order_items_query.filter(product__category_id=category_id)
+            
             product_stats = order_items_query.values('product__id', 'product__name', 'product__category__name').annotate(
                 total_sold=Sum('quantity')
             ).order_by('-total_sold')[:50]
@@ -1359,13 +1388,19 @@ class OrderViewSet(viewsets.ViewSet):
             ]))
         
         elif report_type == 'customers':
+            # Báo cáo khách hàng - KHÔNG lọc theo danh mục (vì đây là thống kê khách hàng tổng thể)
             title = Paragraph('<para align=center><b>BAO CAO KHACH HANG - WEB_TEDDY</b></para>', styles['Title'])
             elements.append(title)
             date_range = Paragraph(f'<para align=center>Tu ngay: {start_date if start_date else "Tat ca"} - Den ngay: {end_date if end_date else "Tat ca"}</para>', styles['Normal'])
             elements.append(date_range)
-            category_line = Paragraph(f'<para align=center>Danh muc: {category_name}</para>', styles['Normal'])
-            elements.append(category_line)
             elements.append(Spacer(1, 0.3*inch))
+            
+            # Filter orders by date range only (không lọc theo category vì đây là báo cáo khách hàng)
+            orders_query = Order.objects.all()
+            if start_date:
+                orders_query = orders_query.filter(created_at__gte=start_date)
+            if end_date:
+                orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
             
             customer_stats = orders_query.values('user__username', 'email', 'phone').annotate(
                 order_count=Count('id'),
