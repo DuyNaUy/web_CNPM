@@ -843,12 +843,14 @@ class OrderViewSet(viewsets.ViewSet):
         total_orders = orders_query.count()
         pending_orders = orders_query.filter(status='pending').count()
         completed_orders = orders_query.filter(status='delivered').count()
-        total_revenue = orders_query.aggregate(total=Sum('total_amount'))['total'] or 0
+        # Loại bỏ đơn hàng bị hủy khỏi tổng doanh thu
+        total_revenue = orders_query.exclude(status='cancelled').aggregate(total=Sum('total_amount'))['total'] or 0
         total_customers = orders_query.values('user_id').distinct().count()
 
         if category_id:
             total_orders = order_items_query.values('order_id').distinct().count()
-            total_revenue = order_items_query.aggregate(total=Sum(line_revenue_expr))['total'] or 0
+            # Loại bỏ đơn hàng bị hủy khỏi tổng doanh thu theo danh mục
+            total_revenue = order_items_query.exclude(order__status='cancelled').aggregate(total=Sum(line_revenue_expr))['total'] or 0
             total_customers = orders_query.values('user_id').distinct().count()
         
         # Tính tỷ lệ hoàn thành
@@ -857,12 +859,13 @@ class OrderViewSet(viewsets.ViewSet):
             completion_rate = (completed_orders / total_orders) * 100
         
         # Doanh thu theo tháng trong khoảng lọc hiện tại (xử lý bằng Python để tránh lỗi timezone DB)
+        # Loại bỏ đơn hàng bị hủy
         revenue_by_month = []
         monthly_revenue_map = {}
         weekly_orders_map = {}
 
         if category_id:
-            for item in order_items_query.select_related('order').only('order__created_at', 'product_price', 'quantity'):
+            for item in order_items_query.exclude(order__status='cancelled').select_related('order').only('order__created_at', 'product_price', 'quantity'):
                 local_created_at = timezone.localtime(item.order.created_at)
 
                 month_key = (local_created_at.year, local_created_at.month)
@@ -879,7 +882,7 @@ class OrderViewSet(viewsets.ViewSet):
                     }
                 weekly_orders_map[week_key]['order_ids'].add(item.order_id)
         else:
-            for order in orders_query.only('created_at', 'total_amount'):
+            for order in orders_query.exclude(status='cancelled').only('created_at', 'total_amount'):
                 local_created_at = timezone.localtime(order.created_at)
 
                 month_key = (local_created_at.year, local_created_at.month)
@@ -929,9 +932,9 @@ class OrderViewSet(viewsets.ViewSet):
                     'orders': 0
                 })
 
-        # Doanh thu theo kích thước gấu (từ ProductVariant)
+        # Doanh thu theo kích thước gấu (từ ProductVariant) - loại bỏ đơn hàng bị hủy
         revenue_by_size = []
-        size_stats = order_items_query.filter(
+        size_stats = order_items_query.exclude(order__status='cancelled').filter(
             unit__isnull=False
         ).values('unit').annotate(
             total_revenue=Sum(line_revenue_expr),
@@ -946,9 +949,9 @@ class OrderViewSet(viewsets.ViewSet):
                     'count': stat['total_count']
                 })
         
-        # Top sản phẩm bán chạy
+        # Top sản phẩm bán chạy - loại bỏ đơn hàng bị hủy
         top_products = []
-        product_stats = order_items_query.values(
+        product_stats = order_items_query.exclude(order__status='cancelled').values(
             'product__id',
             'product__name',
             'product_name',
@@ -1065,7 +1068,9 @@ class OrderViewSet(viewsets.ViewSet):
                 ws.cell(row=row, column=4, value=float(order.total_amount)).border = border
                 ws.cell(row=row, column=5, value=order.get_status_display()).border = border
                 ws.cell(row=row, column=6, value=order.get_payment_method_display()).border = border
-                total_revenue += float(order.total_amount)
+                # Chỉ tính tổng doanh thu nếu đơn hàng không bị hủy
+                if order.status != 'cancelled':
+                    total_revenue += float(order.total_amount)
             
             # Summary row
             summary_row = len(orders) + 5
@@ -1176,8 +1181,8 @@ class OrderViewSet(viewsets.ViewSet):
                 cell.alignment = Alignment(horizontal="center")
                 cell.border = border
             
-            # Get customer statistics
-            customer_stats = orders_query.values('user__username', 'email', 'phone', 'user__date_joined').annotate(
+            # Get customer statistics (loại bỏ đơn hàng bị hủy)
+            customer_stats = orders_query.exclude(status='cancelled').values('user__username', 'email', 'phone', 'user__date_joined').annotate(
                 order_count=Count('id'),
                 total_spent=Sum('total_amount')
             ).order_by('-total_spent')
@@ -1275,7 +1280,9 @@ class OrderViewSet(viewsets.ViewSet):
                     order.get_status_display()[:10],
                     order.get_payment_method_display()[:10],
                 ])
-                total_revenue += float(order.total_amount)
+                # Chỉ tính tổng doanh thu nếu đơn hàng không bị hủy
+                if order.status != 'cancelled':
+                    total_revenue += float(order.total_amount)
             
             data.append(['', '', 'TONG CONG:', f'{total_revenue:,.0f}', '', ''])
             
@@ -1402,7 +1409,8 @@ class OrderViewSet(viewsets.ViewSet):
             if end_date:
                 orders_query = orders_query.filter(created_at__lte=end_date + ' 23:59:59')
             
-            customer_stats = orders_query.values('user__username', 'email', 'phone').annotate(
+            # Loại bỏ đơn hàng bị hủy khỏi thống kê khách hàng
+            customer_stats = orders_query.exclude(status='cancelled').values('user__username', 'email', 'phone').annotate(
                 order_count=Count('id'),
                 total_spent=Sum('total_amount')
             ).order_by('-total_spent')[:50]
